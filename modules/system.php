@@ -13,7 +13,7 @@
  */
 function handleSystemAPI() {
     global $config;
-    $method = $_POST['method'] ?? '';
+    $method = $_POST['method'] ?? $_GET['method'] ?? '';
     $params = $_POST['params'] ?? [];
 
     // Parse params if it's a JSON string
@@ -33,7 +33,10 @@ function handleSystemAPI() {
                     'server' => $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown',
                     'debug_mode' => $config['system']['debug'],
                     'uptime' => time() - $_SERVER['REQUEST_TIME_FLOAT'],
-                    'use_local_filesystem' => $config['filesystem']['use_local']
+                    'use_local_filesystem' => $config['filesystem']['use_local'],
+                    // ✅ FIXED: Expose the entire security configuration block to the frontend.
+                    // This ensures that any security flags needed by the client are available.
+                    'security'  => $config['security'] ?? []
                 ]
             ];
             
@@ -117,82 +120,57 @@ function initializeSystem() {
         $userDBFile = $config['filesystem']['system_dir'] . '/users.json';
         $appSubmissionsFile = $config['filesystem']['system_dir'] . '/app_submissions.json';
         $errorLogFile = $config['filesystem']['system_dir'] . '/error.log';
-		
+        
+        // Default README
         if (!file_exists($readmePath)) {
-            $readme = <<<TXT
-Welcome to Genesis OS
-
-This is a self-contained web-based operating system that provides:
-- A desktop interface with window management
-- Mathematical sandbox for calculations and visualizations
-- File management capabilities
-- Terminal with command execution
-- Application installation system
-
-To get started, log in with one of these demo accounts:
-- admin / 00EITA00 (Administrator)
-- guest / dfcGigtm8* (Regular user)
-
-Enjoy exploring Genesis OS!
-TXT;
+            $readme = "Welcome to Genesis OS. Login with admin/00EITA00 or guest/dfcGigtm8*.";
             file_put_contents($readmePath, $readme);
         }
 
+        // Default user database
         if (!file_exists($userDBFile)) {
-            $defaultUsers = [
-                [
-                    'username' => 'admin',
-                    'password' => password_hash('00EITA00', PASSWORD_DEFAULT),
-                    'role' => 'admin',
-                    'name' => 'Administrator',
-                    'quota' => 20 * 1024 * 1024,
-                    'lastLogin' => null
-                ],
-                [
-                    'username' => 'guest',
-                    'password' => password_hash('dfcGigtm8*', PASSWORD_DEFAULT),
-                    'role' => 'user',
-                    'name' => 'Guest User',
-                    'quota' => 10 * 1024 * 1024,
-                    'lastLogin' => null
-                ]
-            ];
+			$defaultUsers = [
+				[
+					'username' => 'admin',
+					'password' => password_hash('00EITA00', PASSWORD_DEFAULT),
+					'roles' => ['admin', 'developer'],
+					'name' => 'Administrator',
+					'quota' => 20 * 1024 * 1024,
+					'lastLogin' => null
+				],
+				[
+					'username' => 'guest',
+					'password' => password_hash('dfcGigtm8*', PASSWORD_DEFAULT),
+					'roles' => ['user'],
+					'name' => 'Guest User',
+					'quota' => 10 * 1024 * 1024,
+					'lastLogin' => null
+				]
+			];
             file_put_contents($userDBFile, json_encode($defaultUsers, JSON_PRETTY_PRINT));
         }
 
+        // Default submissions file
         if (!file_exists($appSubmissionsFile)) {
             file_put_contents($appSubmissionsFile, json_encode([], JSON_PRETTY_PRINT));
         }
 
+        // Default error log
         if (!file_exists($errorLogFile)) {
             file_put_contents($errorLogFile, "");
         }
 
-        // --- MODIFICATION START ---
-        // Use the config to define the language directory, removing reliance on an undefined global.
-        $languageDir = $config['filesystem']['system_dir'];
-        $langFile = $languageDir . '/lang_en.json';
-        // --- MODIFICATION END ---
-        if (!file_exists($langFile)) {
-            $defaultLang = [
-                'login_heading' => 'Genesis OS',
-                'username' => 'Username',
-                'password' => 'Password',
-                'login_button' => 'Log In',
-                'login_missing' => 'Please enter both username and password'
-            ];
-            file_put_contents($langFile, json_encode($defaultLang, JSON_PRETTY_PRINT));
-        }
+        // User home directories
+		$users = loadUserDB();
+		foreach ($users as $u) {
+			$home = $config['filesystem']['user_dir'] . '/' . $u['username'];
+			$desktop = $home . '/Desktop';
+			$documents = $home . '/Documents';
 
-        $users = loadUserDB();
-        foreach ($users as $u) {
-            $home = $config['filesystem']['user_dir'] . '/' . $u['username'];
-            if (!file_exists($home)) {
-                mkdir($home, 0755, true);
-                mkdir($home . '/Desktop', 0755, true);
-                mkdir($home . '/Documents', 0755, true);
-            }
-        }
+			if (!is_dir($home)) mkdir($home, 0755, true);
+			if (!is_dir($desktop)) mkdir($desktop, 0755, true);
+			if (!is_dir($documents)) mkdir($documents, 0755, true);
+		}
     }
 }
 
@@ -200,13 +178,20 @@ TXT;
  * Load a language pack
  */
 function loadLanguagePack(string $code): array {
-    // --- MODIFICATION START ---
-    // Use the global config array to reliably find the system directory.
     global $config;
-    $languageDir = $config['filesystem']['system_dir'];
-    // --- MODIFICATION END ---
+    $languageDir = $config['filesystem']['system_dir'] . '/lang';
+    if(!is_dir($languageDir)) mkdir($languageDir, 0755, true);
+
     $file = "$languageDir/lang_{$code}.json";
     if (!file_exists($file)) {
+        if ($code === 'en') { // Create default english pack if not exists
+            $defaultLang = [
+                'login_heading' => 'Genesis OS Login', 'username' => 'Username', 'password' => 'Password',
+                'login_button' => 'Log In', 'login_missing' => 'Username and password are required.'
+            ];
+            file_put_contents($file, json_encode($defaultLang, JSON_PRETTY_PRINT));
+            return $defaultLang;
+        }
         return [];
     }
     $json = json_decode(file_get_contents($file), true);
