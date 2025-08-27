@@ -2,9 +2,6 @@
 /**
  * Genesis Operating System (GOS)
  * Configuration File
- *
- * This file should ONLY return the configuration array.
- * It should not execute any logic or have any side effects.
  */
 
 return [
@@ -15,24 +12,22 @@ return [
         'debug' => true
     ],
     'security' => [
-        'admin_users' => ['admin'],
-        // NEW: Add a roles configuration for developers
-        'developer_users' => ['admin', 'developer'], // 'admin' is also a developer
+        // ✅ NEW: Add a flag to control developer registration.
+        'allow_developer_registration' => true,
         'sandbox_enabled' => true,
         'sandbox_memory_limit' => '64M',
         'sandbox_time_limit' => 5 // seconds
     ],
     'filesystem' => [
-        'use_local' => true, // Set to false to use localStorage only
+        'use_local' => true,
         'root_dir' => __DIR__ . '/gos_files',
         'user_dir' => __DIR__ . '/gos_files/users',
-        // We removed the APP_DIR constant and just define the path directly.
         'apps_dir' => __DIR__ . '/gos_files/apps',
         'system_dir' => __DIR__ . '/gos_files/system',
         'temp_dir' => __DIR__ . '/gos_files/temp'
     ],
     'ui' => [
-        'theme' => 'vintage', // vintage, dark, light, blue
+        'theme' => 'vintage',
         'animations' => true,
         'fontSize' => 'medium',
         'language' => 'en'

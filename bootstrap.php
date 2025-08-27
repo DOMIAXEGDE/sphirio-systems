@@ -13,6 +13,7 @@ $config = require_once 'config.php';
 /* -------------------------------------------------------------
  * REQUIRED: Accept JSON bodies as if they were normal $_POST data
  * ------------------------------------------------------------- */
+//if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_SERVER['CONTENT_TYPE']) && strpos($_SERVER['CONTENT_TYPE'], 'application/json') === 0) {
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && !empty($_SERVER['CONTENT_TYPE']) && strpos($_SERVER['CONTENT_TYPE'], 'application/json') === 0) {
     $raw = file_get_contents('php://input');
     if ($raw !== false && $raw !== '') {
@@ -50,12 +51,18 @@ register_shutdown_function(function() use ($errorLogFile) {
     }
 });
 
-// --- MODIFICATION START ---
-// The entire session initialization block has been removed from this file.
-// All session handling is now correctly centralized in 'security_bootstrap.php',
-// which is included before this file in 'genesis-os.php'. This resolves the
-// conflict that was causing the session to be dropped after login.
-// --- MODIFICATION END ---
+/* -------------------------------------------------------------
+ * Session and Filesystem Initialization
+ * ------------------------------------------------------------- */
+$secureCookie = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $secureCookie,
+    'httponly' => true,
+    'samesite' => 'Lax'
+]);
+session_start();
 
 // Include Core Modules
 require_once 'modules/auth.php';

@@ -153,3 +153,107 @@ OSbench/
 ---
 
 Would you like me to also prepare this manual as a **`DEV-SETUP.md`** file, ready to drop into your repo?
+
+---
+
+Nice — that screenshot looks right. The CSP violations are gone (the console shows only your own “\[GOS:\*]” logs), which means the updated `security_bootstrap.php` is doing its job:
+
+* Dev mode → **no nonce in CSP**, inline/eval allowed, no browser complaints.
+* HTTPS via Caddy, HSTS/COOP/optional COEP handled by the proxy.
+* PHP is serving behind Caddy on 127.0.0.1:8000.
+
+About the **“System Error / An error occurred.”** on the page: that’s now an app-level issue (not headers/CSP). Here’s a quick triage checklist so you can pin it down fast:
+
+### 1) Look for a failing request
+
+* Open DevTools → **Network** (keep “Preserve log” on).
+* Click **Restart**.
+* Filter by **Status >= 400** or **Type: xhr/fetch**.
+* Click any failing row → check **Response** and **Preview**.
+  If it’s a PHP exception/notice, you’ll see it here.
+
+### 2) Check local logs
+
+* PHP stdout/stderr from your launcher script:
+
+  * `OSbench\https-dev-logs\php.err.txt`
+  * `OSbench\https-dev-logs\php.out.txt`
+* Caddy (usually quiet for app errors):
+
+  * `OSbench\https-dev-logs\caddy.err.txt`
+  * `OSbench\https-dev-logs\caddy.out.txt`
+
+### 3) Ensure sessions & storage work
+
+Common causes for “System Error” in auth/boot:
+
+* **Sessions**: make sure PHP can write session files.
+
+  * Check `session.save_path` in `php -i` or `phpinfo()`.
+  * If it’s empty or unwritable, set e.g. in a local `php.ini`:
+
+    ```
+    session.save_path = "C:\Users\<you>\AppData\Local\Temp\phpsessions"
+    ```
+
+    (create the folder; restart dev.)
+* **App data directories** (if your app writes to disk): confirm the paths exist and are writable by your user account.
+
+### 4) Keep dev errors visible
+
+You’re already in dev (console shows “Debug mode: enabled”), but to force it:
+
+* In your environment (or via your launcher), set:
+
+  * `APP_ENV=development`
+  * `APP_DEBUG=1`
+* Then reload. Any PHP errors should surface in the **Network response** or `php.err.txt`.
+
+### 5) If you still see the error with no logs
+
+* Add a quick guard near where you render “System Error” to also dump the underlying exception/message when `APP_DEBUG=1`.
+* Verify your routes/rewrite: your Caddyfile is already rewriting “non-files” to `/index.php` and proxying `.php` files — that part is correct.
+
+### Helpful commands/reminders
+
+* **Start** (from `OSbench`):
+
+  ```
+  .\run-https-dev.ps1 -Start -Open -SiteHost dev.local -PhpPort 8000
+  ```
+* **Stop**:
+
+  ```
+  .\run-https-dev.ps1 -Stop
+  ```
+* **Quick HTTPS probe** (PowerShell):
+
+  ```
+  curl.exe -k -I https://dev.local/
+  ```
+* **Open diagnostics**:
+
+  ```
+  https://dev.local/diagnostics.php
+  ```
+
+  It should show `APP_IS_PROD=false`, `APP_IS_HTTPS=true`.
+
+### Using the CSP nonce in prod (recap)
+
+In production builds/templates, wrap any inline code with the nonce:
+
+```php
+<script <?= security_csp_nonce() ? 'nonce="'.security_csp_nonce().'"' : '' ?>>
+  // inline JS
+</script>
+
+<style <?= security_csp_nonce() ? 'nonce="'.security_csp_nonce().'"' : '' ?>>
+  /* inline CSS */
+</style>
+```
+
+* **Dev**: `security_csp_nonce()` returns empty → attribute omitted → inline allowed.
+* **Prod**: it returns a value → CSP requires it → no violations.
+
+If you share a snippet of the failing Network response (status + body) or the latest lines from `php.err.txt`, I can pinpoint the exact cause of that “System Error.”

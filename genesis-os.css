@@ -1,0 +1,1125 @@
+/**
+ * Genesis Operating System (GOS)
+ * Main Stylesheet
+ *
+ * Build: 20250711
+ */
+
+/* ============================================================
+ * BASE & THEME SETUP
+ * ============================================================ */
+
+/* Reset and Base Styles */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+html,
+body {
+	height: 100%;
+	width: 100%;
+	overflow: hidden;
+	font-family: 'Segoe UI', 'Arial', sans-serif;
+	font-size: 16px;
+	line-height: 1.5;
+}
+
+/* Theme Variables */
+:root {
+	/* Vintage Theme (Default) */
+	--main-bg: #000000;
+	--main-text: #33ff33;
+	--main-border: #33ff33;
+	--terminal-bg: #111111;
+	--button-bg: #333333;
+	--highlight: #00aa00;
+	--cell-default-bg: #222222;
+	--cell-default-text: #33ff33;
+	--window-header: #005500;
+	--window-body: rgba(0, 17, 0, 0.9);
+	--icon-bg: #001100;
+	--tooltip-bg: #001100;
+	--tooltip-border: #00aa00;
+	--scrollbar-thumb: #00aa00;
+	--scrollbar-track: #001100;
+	--menu-bg: rgba(0, 17, 0, 0.95);
+}
+
+/* Dark theme class */
+.theme-dark {
+	--main-bg: #1e1e1e;
+	--main-text: #f0f0f0;
+	--main-border: #444444;
+	--terminal-bg: #252525;
+	--button-bg: #333333;
+	--highlight: #3f51b5;
+	--cell-default-bg: #333333;
+	--cell-default-text: #f0f0f0;
+	--window-header: #252525;
+	--window-body: rgba(30, 30, 30, 0.9);
+	--icon-bg: #252525;
+	--tooltip-bg: #252525;
+	--tooltip-border: #3f51b5;
+	--scrollbar-thumb: #3f51b5;
+	--scrollbar-track: #252525;
+	--menu-bg: rgba(30, 30, 30, 0.95);
+}
+
+/* Light theme class */
+.theme-light {
+	--main-bg: #f0f0f0;
+	--main-text: #333333;
+	--main-border: #cccccc;
+	--terminal-bg: #ffffff;
+	--button-bg: #e0e0e0;
+	--highlight: #3f51b5;
+	--cell-default-bg: #ffffff;
+	--cell-default-text: #333333;
+	--window-header: #e0e0e0;
+	--window-body: rgba(255, 255, 255, 0.9);
+	--icon-bg: #e0e0e0;
+	--tooltip-bg: #ffffff;
+	--tooltip-border: #3f51b5;
+	--scrollbar-thumb: #3f51b5;
+	--scrollbar-track: #e0e0e0;
+	--menu-bg: rgba(255, 255, 255, 0.95);
+}
+
+/* Blue theme class */
+.theme-blue {
+	--main-bg: #1a2130;
+	--main-text: #33aaff;
+	--main-border: #33aaff;
+	--terminal-bg: #0c1020;
+	--button-bg: #253040;
+	--highlight: #0077cc;
+	--cell-default-bg: #1c2636;
+	--cell-default-text: #33aaff;
+	--window-header: #003366;
+	--window-body: rgba(10, 20, 40, 0.9);
+	--icon-bg: #0c1020;
+	--tooltip-bg: #0c1020;
+	--tooltip-border: #0077cc;
+	--scrollbar-thumb: #0077cc;
+	--scrollbar-track: #0c1020;
+	--menu-bg: rgba(10, 20, 40, 0.95);
+}
+
+body {
+	background-color: var(--main-bg);
+	color: var(--main-text);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+::-webkit-scrollbar-track {
+	background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb);
+	border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: var(--highlight);
+}
+
+/* ============================================================
+ * SYSTEM SCREENS (SPLASH, LOGIN, ERROR)
+ * ============================================================ */
+
+/* Splash Screen */
+.splash-screen {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: var(--main-bg);
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	z-index: 9999;
+	transition: opacity 0.5s ease-in-out;
+}
+.splash-screen.fade-out {
+	opacity: 0;
+}
+#splash-logo {
+	font-size: 80px;
+	margin-bottom: 40px;
+	text-shadow: 0 0 15px var(--main-text);
+	animation: pulsate 2s infinite;
+}
+@keyframes pulsate {
+	0% { opacity: 0.8; }
+	50% { opacity: 1.0; text-shadow: 0 0 20px var(--main-text); }
+	100% { opacity: 0.8; }
+}
+.loading-indicator {
+	width: 300px;
+	text-align: center;
+}
+.loading-bar {
+	width: 100%;
+	height: 6px;
+	background-color: var(--terminal-bg);
+	border-radius: 3px;
+	overflow: hidden;
+	margin-bottom: 10px;
+}
+.loading-progress {
+	height: 100%;
+	width: 0;
+	background: var(--highlight);
+	border-radius: 3px;
+	transition: width 0.3s ease-out;
+}
+.loading-status {
+	font-size: 14px;
+}
+
+/* Login Screen */
+.login-screen {
+	display: none;
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: var(--main-bg);
+	background-image: radial-gradient(circle at center, var(--button-bg) 0%, var(--main-bg) 100%);
+	z-index: 9998;
+	opacity: 0;
+	transition: opacity 0.5s ease-in-out;
+}
+.login-screen.show {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	opacity: 1;
+}
+.login-container {
+	width: 360px;
+	padding: 30px;
+	background-color: var(--window-body);
+	border-radius: 10px;
+	border: 1px solid var(--main-border);
+	box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+.login-logo {
+	text-align: center;
+	margin-bottom: 30px;
+	font-size: 50px;
+}
+.login-heading {
+	text-align: center;
+	font-size: 24px;
+	font-weight: 400;
+	margin-bottom: 30px;
+}
+.login-form {
+	display: flex;
+	flex-direction: column;
+}
+.login-input {
+	position: relative;
+	margin-bottom: 20px;
+}
+.login-input input {
+	width: 100%;
+	padding: 10px 15px;
+	font-size: 16px;
+	background-color: var(--terminal-bg);
+	color: var(--main-text);
+	border: 1px solid var(--main-border);
+	border-radius: 4px;
+	outline: none;
+}
+.login-input input:focus {
+	box-shadow: 0 0 0 2px var(--highlight);
+}
+.login-button {
+	padding: 12px;
+	background-color: var(--highlight);
+	color: var(--main-bg);
+	font-size: 16px;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: opacity 0.3s;
+}
+.login-button:hover {
+	opacity: 0.9;
+}
+.login-error {
+	color: #ff4081;
+	font-size: 14px;
+	text-align: center;
+	margin-top: 15px;
+	min-height: 20px;
+}
+
+/* Error Screen */
+.error-screen {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: var(--main-bg);
+	display: none;
+	justify-content: center;
+	align-items: center;
+	z-index: 9999;
+}
+.error-container {
+	width: 500px;
+	padding: 30px;
+	background-color: var(--window-body);
+	border: 1px solid var(--main-border);
+	border-radius: 10px;
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+	text-align: center;
+}
+.error-container h2 {
+	color: #f44336;
+	margin-bottom: 20px;
+}
+.error-container p {
+	margin-bottom: 25px;
+	opacity: 0.8;
+}
+.error-container pre {
+	text-align: left;
+	background-color: var(--terminal-bg);
+	padding: 15px;
+	border-radius: 4px;
+	overflow: auto;
+	margin-bottom: 25px;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+#restart-button {
+	padding: 10px 20px;
+	background-color: var(--highlight);
+	color: var(--main-bg);
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 16px;
+}
+#restart-button:hover {
+	opacity: 0.9;
+}
+
+/* ============================================================
+ * DESKTOP ENVIRONMENT
+ * ============================================================ */
+
+.desktop {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: var(--main-bg);
+	background-image:
+		radial-gradient(var(--main-border) 1px, transparent 1px),
+		radial-gradient(var(--main-border) 1px, transparent 1px);
+	background-size: 50px 50px;
+	background-position: 0 0, 25px 25px;
+	background-attachment: fixed;
+	opacity: 0.8;
+	overflow: hidden;
+	display: none;
+	opacity: 0;
+	transition: opacity 0.5s ease-in-out;
+}
+.desktop.show {
+	display: block;
+	opacity: 1;
+}
+
+/* Desktop Icons */
+.desktop-icons {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, 80px);
+	grid-gap: 20px;
+	padding: 20px;
+	position: absolute;
+	top: 0;
+	left: 0;
+}
+.desktop-icon {
+	width: 80px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	cursor: pointer;
+	padding: 5px;
+	border-radius: 5px;
+}
+.desktop-icon:hover {
+	background-color: rgba(var(--highlight), 0.3);
+}
+.icon-image {
+	width: 48px;
+	height: 48px;
+	background-color: var(--icon-bg);
+	border: 1px solid var(--main-border);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	font-size: 24px;
+	margin-bottom: 5px;
+	color: var(--main-text);
+}
+.icon-text {
+	text-align: center;
+	font-size: 12px;
+	word-wrap: break-word;
+	max-width: 80px;
+	text-shadow: 1px 1px 2px black;
+}
+
+/* Workspace */
+.workspace {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 40px; /* Space for taskbar */
+	overflow: hidden;
+}
+
+/* Taskbar */
+.taskbar {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: 40px;
+	background-color: var(--terminal-bg);
+	border-top: 1px solid var(--main-border);
+	display: flex;
+	z-index: 1000;
+}
+.start-button {
+	width: 60px;
+	height: 40px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background: none;
+	border: none;
+	color: var(--main-text);
+	font-weight: bold;
+	cursor: pointer;
+	transition: background-color 0.2s;
+}
+.start-button:hover {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.taskbar-items {
+	flex: 1;
+	display: flex;
+	padding: 0 5px;
+	overflow-x: auto;
+	overflow-y: hidden;
+}
+.taskbar-item {
+	height: 40px;
+	min-width: 160px;
+	max-width: 200px;
+	display: flex;
+	align-items: center;
+	padding: 0 10px;
+	margin-right: 4px;
+	background-color: rgba(60, 60, 60, 0.3);
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background-color 0.2s;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.taskbar-item:hover {
+	background-color: rgba(80, 80, 80, 0.5);
+}
+.taskbar-item.active {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.taskbar-item-icon {
+	margin-right: 8px;
+	font-size: 16px;
+}
+.taskbar-item-title {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.system-tray {
+	display: flex;
+	align-items: center;
+	padding: 0 10px;
+}
+.clock {
+	font-size: 14px;
+	min-width: 55px;
+	text-align: center;
+}
+
+/* Start Menu */
+.start-menu {
+	position: absolute;
+	bottom: 40px;
+	left: 0;
+	width: 300px;
+	max-height: 0;
+	background-color: var(--menu-bg);
+	border-radius: 0 6px 0 0;
+	border: 1px solid var(--main-border);
+	border-bottom: none;
+	box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+	overflow: hidden;
+	z-index: 1001;
+	transition: max-height 0.3s ease-out;
+	display: flex; /* Add this */
+	flex-direction: column; /* Add this */
+}
+.start-menu.active {
+	max-height: 600px;
+}
+.user-info {
+	padding: 20px;
+	display: flex;
+	align-items: center;
+	background: linear-gradient(135deg, var(--highlight) 0%, var(--main-border) 100%);
+	color: var(--main-bg);
+}
+.user-avatar {
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	background-color: var(--main-bg);
+	margin-right: 15px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;
+}
+.user-name {
+	font-size: 16px;
+	font-weight: 500;
+}
+.menu-items {
+	padding: 10px 0;
+	overflow-y: auto; /* Make the list scrollable */
+	max-height: 400px; /* Set a max height before scrolling starts */
+}
+.menu-item {
+	padding: 10px 20px;
+	cursor: pointer;
+	transition: background-color 0.2s;
+	display: flex;
+	align-items: center;
+}
+.menu-item:hover {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.menu-item-icon {
+	margin-right: 10px;
+	font-size: 16px;
+	width: 20px;
+	text-align: center;
+}
+.menu-separator {
+	height: 1px;
+	background-color: var(--main-border);
+	margin: 10px 0;
+	opacity: 0.3;
+}
+
+/* ============================================================
+ * WINDOW SYSTEM
+ * ============================================================ */
+
+.window {
+	position: absolute;
+	background-color: var(--window-body);
+	border: 1px solid var(--main-border);
+	border-radius: 6px;
+	box-shadow: 0 5px 25px rgba(0, 0, 0, 0.4);
+	display: flex;
+	flex-direction: column;
+	min-width: 300px;
+	min-height: 200px;
+	z-index: 100;
+	transition: transform 0.3s, opacity 0.3s;
+}
+.window.minimized {
+	transform: scale(0.7);
+	opacity: 0;
+	pointer-events: none;
+}
+.window.maximized {
+	top: 0 !important;
+	left: 0 !important;
+	width: 100% !important;
+	height: calc(100% - 40px) !important;
+	border-radius: 0;
+}
+.window-header {
+	height: 32px;
+	background-color: var(--window-header);
+	border-radius: 6px 6px 0 0;
+	display: flex;
+	align-items: center;
+	padding: 0 10px;
+	cursor: move;
+}
+.window-title {
+	flex: 1;
+	font-size: 14px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	user-select: none;
+}
+.window-controls {
+	display: flex;
+}
+.window-control {
+	width: 24px;
+	height: 24px;
+	background: none;
+	border: none;
+	color: var(--main-text);
+	font-size: 14px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 4px;
+	margin-left: 2px;
+}
+.window-control:hover {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.window-content {
+	flex: 1;
+	overflow: auto;
+	position: relative;
+}
+.app-loading {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background-color: var(--window-body);
+	color: var(--main-text);
+	font-size: 14px;
+}
+
+/* ============================================================
+ * UI COMPONENTS
+ * ============================================================ */
+
+/* Context Menu */
+.context-menu {
+	position: absolute;
+	min-width: 150px;
+	background-color: var(--menu-bg);
+	border: 1px solid var(--main-border);
+	border-radius: 4px;
+	box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+	z-index: 2000;
+	padding: 5px 0;
+}
+.context-menu-item {
+	padding: 8px 15px;
+	cursor: pointer;
+	transition: background-color 0.2s;
+}
+.context-menu-item:hover {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.context-menu-separator {
+	height: 1px;
+	background-color: var(--main-border);
+	margin: 5px 0;
+	opacity: 0.3;
+}
+
+/* Notifications & Banners */
+.notification-container {
+	position: fixed;
+	bottom: 50px;
+	right: 10px;
+	width: 300px;
+	z-index: 1500;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.error-banner {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	background-color: #f44336;
+	color: #ffffff;
+	padding: 10px;
+	text-align: center;
+	z-index: 2000;
+	display: none;
+}
+.debug-console {
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: 200px;
+	background: #111;
+	color: #0f0;
+	font-family: monospace;
+	padding: 5px;
+	overflow: auto;
+	z-index: 2500;
+	display: none;
+}
+.notification {
+	background-color: var(--window-body);
+	border: 1px solid var(--main-border);
+	border-radius: 6px;
+	box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+	padding: 15px;
+	transform: translateX(120%);
+	transition: transform 0.3s ease-out;
+}
+.notification.show {
+	transform: translateX(0);
+}
+.notification-title {
+	font-weight: 500;
+	margin-bottom: 5px;
+}
+.notification-body {
+	font-size: 14px;
+	opacity: 0.8;
+}
+
+/* Modal Dialog */
+.modal-backdrop {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.6);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	z-index: 10000; /* ✅ FIXED: Increased z-index to appear above login screen */
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.3s;
+}
+.modal-backdrop.show {
+	opacity: 1;
+	pointer-events: auto;
+}
+.modal {
+	width: 400px;
+	background-color: var(--window-body);
+	border: 1px solid var(--main-border);
+	border-radius: 6px;
+	box-shadow: 0 5px 25px rgba(0, 0, 0, 0.5);
+	transform: translateY(-20px);
+	transition: transform 0.3s;
+}
+.modal-backdrop.show .modal {
+	transform: translateY(0);
+}
+.modal-header {
+	padding: 15px;
+	border-bottom: 1px solid var(--main-border);
+}
+.modal-title {
+	font-size: 18px;
+	font-weight: 500;
+}
+.modal-body {
+	padding: 15px;
+	max-height: 70vh;
+	overflow-y: auto;
+}
+.modal-footer {
+	padding: 15px;
+	border-top: 1px solid var(--main-border);
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+}
+.button {
+	padding: 8px 15px;
+	border: 1px solid var(--main-border);
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 14px;
+	transition: background-color 0.2s;
+	background-color: var(--button-bg);
+	color: var(--main-text);
+}
+.button-primary {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+	border-color: var(--highlight);
+}
+.button:hover {
+	opacity: 0.9;
+}
+
+/* ============================================================
+ * APPLICATION-SPECIFIC STYLES
+ * ============================================================ */
+
+/* Mathematical Sandbox */
+.grid-container {
+	border: 1px solid var(--main-border);
+	overflow: auto;
+	flex: 1;
+}
+.grid {
+	display: grid;
+	grid-template-columns: repeat(1, 1fr);
+	grid-gap: 1px;
+	background-color: var(--main-border);
+	padding: 1px;
+	min-width: 100%;
+}
+.cell {
+	background-color: var(--cell-default-bg);
+	color: var(--cell-default-text);
+	min-height: 50px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	padding: 5px;
+	position: relative;
+	cursor: pointer;
+	overflow: hidden;
+	font-size: 12px;
+}
+.cell.split {
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(1, 1fr);
+	grid-gap: 1px;
+	background-color: var(--main-border);
+}
+.sub-cell {
+	background-color: var(--cell-default-bg);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 20px;
+	text-align: center;
+	cursor: pointer;
+	padding: 2px;
+}
+
+/* File Manager */
+.file-browser {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+.file-toolbar {
+	display: flex;
+	align-items: center;
+	height: 40px;
+	padding: 0 10px;
+	background-color: var(--terminal-bg);
+	border-bottom: 1px solid var(--main-border);
+}
+.file-browser-content {
+	display: flex;
+	flex: 1;
+}
+.file-sidebar {
+	width: 200px;
+	background-color: var(--terminal-bg);
+	border-right: 1px solid var(--main-border);
+	overflow-y: auto;
+}
+.file-sidebar-item {
+	padding: 8px 15px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+}
+.file-sidebar-item:hover {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.file-sidebar-item.active {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.file-sidebar-icon {
+	margin-right: 10px;
+	font-size: 16px;
+}
+.file-main {
+	flex: 1;
+	overflow: auto;
+	padding: 10px;
+}
+.file-list {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+	gap: 10px;
+}
+.file-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 10px 5px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background-color 0.2s;
+}
+.file-item:hover {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.file-item.selected {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.file-icon {
+	font-size: 36px;
+	margin-bottom: 5px;
+}
+.file-name {
+	font-size: 12px;
+	text-align: center;
+	word-break: break-word;
+	max-width: 100%;
+}
+
+/* Terminal */
+.terminal {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	background-color: var(--terminal-bg);
+	color: var(--main-text);
+	font-family: 'Courier New', monospace;
+	padding: 10px;
+	overflow: auto;
+}
+.terminal-output {
+	flex: 1;
+	overflow-y: auto;
+	white-space: pre-wrap;
+	word-break: break-all;
+	line-height: 1.3;
+}
+.terminal-input-line {
+	display: flex;
+	margin-top: 10px;
+}
+.terminal-prompt {
+	color: var(--highlight);
+	margin-right: 10px;
+}
+.terminal-input {
+	flex: 1;
+	background: none;
+	border: none;
+	color: var(--main-text);
+	font-family: 'Courier New', monospace;
+	font-size: inherit;
+	outline: none;
+}
+
+/* Code Editor */
+.editor {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+.editor-toolbar {
+	display: flex;
+	align-items: center;
+	height: 40px;
+	padding: 0 10px;
+	background-color: var(--terminal-bg);
+	border-bottom: 1px solid var(--main-border);
+}
+.editor-content {
+	flex: 1;
+	position: relative;
+}
+.editor-textarea {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	padding: 10px;
+	background-color: var(--terminal-bg);
+	color: var(--main-text);
+	border: none;
+	resize: none;
+	font-family: 'Courier New', monospace;
+	font-size: 14px;
+	line-height: 1.5;
+	tab-size: 4;
+	outline: none;
+}
+
+/* Settings App */
+.settings {
+	display: flex;
+	height: 100%;
+}
+.settings-sidebar {
+	width: 220px;
+	background-color: var(--terminal-bg);
+	border-right: 1px solid var(--main-border);
+	overflow-y: auto;
+	padding: 15px 0;
+}
+.settings-nav-item {
+	padding: 10px 20px;
+	cursor: pointer;
+	transition: background-color 0.2s;
+}
+.settings-nav-item:hover {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.settings-nav-item.active {
+	background-color: var(--highlight);
+	color: var(--main-bg);
+}
+.settings-content {
+	flex: 1;
+	padding: 20px;
+	overflow-y: auto;
+}
+.settings-section {
+	margin-bottom: 30px;
+}
+.settings-section-title {
+	font-size: 18px;
+	font-weight: 500;
+	margin-bottom: 15px;
+	color: var(--highlight);
+}
+.settings-option {
+	margin-bottom: 15px;
+}
+.settings-label {
+	display: block;
+	margin-bottom: 5px;
+	font-size: 14px;
+}
+.settings-input,
+.settings-select {
+	width: 100%;
+	padding: 8px 10px;
+	background-color: var(--terminal-bg);
+	color: var(--main-text);
+	border: 1px solid var(--main-border);
+	border-radius: 4px;
+}
+
+/* ============================================================
+ * EFFECTS & RESPONSIVENESS
+ * ============================================================ */
+
+/* CRT effects */
+.crt-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+	background-size: 100% 4px;
+	z-index: 9999;
+	opacity: 0.15;
+	pointer-events: none;
+	display: none; /* Toggled by user preference */
+}
+.scanline {
+	width: 100%;
+	height: 100%;
+	position: fixed;
+	top: 0;
+	left: 0;
+	background: linear-gradient(to bottom,
+		transparent 0%,
+		rgba(var(--main-text-rgb, 51, 255, 51), 0.1) 50%,
+		transparent 100%);
+	animation: scanline 10s linear infinite;
+	opacity: 0.3;
+	pointer-events: none;
+	z-index: 9998;
+	display: none; /* Toggled by user preference */
+}
+@keyframes scanline {
+	0% { transform: translateY(0); }
+	100% { transform: translateY(100vh); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+	.desktop-icons {
+		grid-template-columns: repeat(auto-fill, 70px);
+		grid-gap: 10px;
+	}
+	.desktop-icon {
+		width: 70px;
+	}
+	.icon-image {
+		width: 40px;
+		height: 40px;
+		font-size: 20px;
+	}
+	.icon-text {
+		font-size: 11px;
+		max-width: 70px;
+	}
+	.window {
+		width: 90% !important;
+		height: 80% !important;
+		top: 10% !important;
+		left: 5% !important;
+	}
+	.settings-sidebar {
+		width: 180px;
+	}
+}

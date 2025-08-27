@@ -3,80 +3,71 @@
  * Genesis Operating System (GOS)
  * Main entry point, API dispatcher, and HTML shell.
  */
-require_once 'security_bootstrap.php';
+
 require_once 'bootstrap.php';
 
 /* ==============================================================
- * Early API dispatch for "apps"
- * This preserves the original logic to prevent XHR calls from
- * inheriting the desktop's markup.
- * ============================================================== */
-if (isset($_GET['api']) && $_GET['api'] === 'apps') {
-    if (!isAuthenticated()) {
-        jsonHeader();
-        echo json_encode(['success' => false, 'message' => 'Authentication required']);
-        exit;
-    }
-    // handleAppsAPI handles its own JSON response and exit.
-    handleAppsAPI();
-    exit; // Ensure we never fall through.
-}
-
-/* ==============================================================
- * Generic API dispatcher
+ * API Dispatcher
  * ============================================================== */
 if (isset($_GET['api'])) {
     jsonHeader();
 
-    /* ----------------------------------------------------------
-     * Pre-authentication checks from the original file.
-     * ---------------------------------------------------------- */
     $isAuthenticated = isAuthenticated();
     $api = $_GET['api'];
+    $response = null;
 
-    // Block most calls if not authenticated
-    if (!in_array($api, ['auth', 'system'], true) && !$isAuthenticated) {
+    // Public endpoints that do not require authentication
+    $publicEndpoints = [
+        'auth' => ['login', 'register', 'validateToken'],
+        'system' => ['getSystemInfo', 'getLanguagePack']
+    ];
+
+    $method = $_POST['method'] ?? $_GET['method'] ?? null;
+
+    // Check if the requested endpoint is public
+    $isPublicCall = isset($publicEndpoints[$api]) && in_array($method, $publicEndpoints[$api]);
+
+    if (!$isAuthenticated && !$isPublicCall) {
         echo json_encode(['success' => false, 'message' => 'Authentication required']);
         exit;
     }
 
-    // Specific whitelist for 'system' calls before login
-    if ($api === 'system' && !$isAuthenticated) {
-        $method = $_POST['method'] ?? '';
-        $openCalls = ['getSystemInfo', 'getLanguagePack']; // Whitelisted methods
-        if (!in_array($method, $openCalls, true)) {
-            echo json_encode(['success' => false, 'message' => 'Authentication required for this system call']);
-            exit;
+    // Route to the appropriate handler
+    try {
+        switch ($api) {
+            case 'auth':
+                $response = handleAuthAPI();
+                break;
+            case 'filesystem':
+                $response = handleFileSystemAPI();
+                break;
+            case 'users':
+                $response = handleUsersAPI();
+                break;
+            case 'system':
+                $response = handleSystemAPI();
+                break;
+            case 'apps':
+                handleAppsAPI(); // This function handles its own exit
+                break;
+            case 'sandbox':
+                $response = handleSandboxAPI();
+                break;
+            default:
+                http_response_code(404);
+                $response = ['success' => false, 'message' => 'Unknown API endpoint'];
+                break;
         }
+    } catch (Throwable $e) {
+        error_log("API Error in {$api}: " . $e->getMessage());
+        http_response_code(500);
+        $response = ['success' => false, 'message' => 'An internal server error occurred.'];
     }
 
-    /* ----------------------------------------------------------
-     * Dispatch to the correct handler
-     * ---------------------------------------------------------- */
-    $result = [];
-    switch ($api) {
-        case 'auth':
-            $result = handleAuthAPI();
-            break;
-        case 'filesystem':
-            $result = handleFileSystemAPI();
-            break;
-        case 'users':
-            $result = handleUsersAPI();
-            break;
-        case 'system':
-            $result = handleSystemAPI();
-            break;
-        case 'sandbox':
-            $result = handleSandboxAPI();
-            break;
-        default:
-            $result = ['success' => false, 'message' => 'Unknown API endpoint'];
-            http_response_code(404);
-            break;
+    // The response from handlers is now directly echoed
+    if ($response) {
+        echo json_encode($response);
     }
-
-    echo json_encode($result);
     exit;
 }
 
@@ -87,1232 +78,15 @@ initializeSystem();
 ob_end_flush();
 ?>
 <!DOCTYPE html>
-<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Genesis OS - A self-contained mathematical operating system">
     <title>Genesis OS</title>
     
-    <!-- Inline Styles -->
-    <style>
-        /* Reset and Base Styles */
-        *, *::before, *::after {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-        
-        html, body {
-            height: 100%;
-            width: 100%;
-            overflow: hidden;
-            font-family: 'Segoe UI', 'Arial', sans-serif;
-            font-size: 16px;
-            line-height: 1.5;
-        }
-        
-        /* Theme Variables */
-        :root {
-            /* Vintage Theme (Default) */
-            --main-bg: #000000;
-            --main-text: #33ff33;
-            --main-border: #33ff33;
-            --terminal-bg: #111111;
-            --button-bg: #333333;
-            --highlight: #00aa00;
-            --cell-default-bg: #222222;
-            --cell-default-text: #33ff33;
-            --window-header: #005500;
-            --window-body: rgba(0, 17, 0, 0.9);
-            --icon-bg: #001100;
-            --tooltip-bg: #001100;
-            --tooltip-border: #00aa00;
-            --scrollbar-thumb: #00aa00;
-            --scrollbar-track: #001100;
-            --menu-bg: rgba(0, 17, 0, 0.95);
-        }
-        
-        /* Dark theme class */
-        .theme-dark {
-            --main-bg: #1e1e1e;
-            --main-text: #f0f0f0;
-            --main-border: #444444;
-            --terminal-bg: #252525;
-            --button-bg: #333333;
-            --highlight: #3f51b5;
-            --cell-default-bg: #333333;
-            --cell-default-text: #f0f0f0;
-            --window-header: #252525;
-            --window-body: rgba(30, 30, 30, 0.9);
-            --icon-bg: #252525;
-            --tooltip-bg: #252525;
-            --tooltip-border: #3f51b5;
-            --scrollbar-thumb: #3f51b5;
-            --scrollbar-track: #252525;
-            --menu-bg: rgba(30, 30, 30, 0.95);
-        }
-        
-        /* Light theme class */
-        .theme-light {
-            --main-bg: #f0f0f0;
-            --main-text: #333333;
-            --main-border: #cccccc;
-            --terminal-bg: #ffffff;
-            --button-bg: #e0e0e0;
-            --highlight: #3f51b5;
-            --cell-default-bg: #ffffff;
-            --cell-default-text: #333333;
-            --window-header: #e0e0e0;
-            --window-body: rgba(255, 255, 255, 0.9);
-            --icon-bg: #e0e0e0;
-            --tooltip-bg: #ffffff;
-            --tooltip-border: #3f51b5;
-            --scrollbar-thumb: #3f51b5;
-            --scrollbar-track: #e0e0e0;
-            --menu-bg: rgba(255, 255, 255, 0.95);
-        }
-        
-        /* Blue theme class */
-        .theme-blue {
-            --main-bg: #1a2130;
-            --main-text: #33aaff;
-            --main-border: #33aaff;
-            --terminal-bg: #0c1020;
-            --button-bg: #253040;
-            --highlight: #0077cc;
-            --cell-default-bg: #1c2636;
-            --cell-default-text: #33aaff;
-            --window-header: #003366;
-            --window-body: rgba(10, 20, 40, 0.9);
-            --icon-bg: #0c1020;
-            --tooltip-bg: #0c1020;
-            --tooltip-border: #0077cc;
-            --scrollbar-thumb: #0077cc;
-            --scrollbar-track: #0c1020;
-            --menu-bg: rgba(10, 20, 40, 0.95);
-        }
-        
-        body {
-            background-color: var(--main-bg);
-            color: var(--main-text);
-        }
-        
-        /* Scrollbar styling */
-        ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: var(--scrollbar-track);
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: var(--scrollbar-thumb);
-            border-radius: 2px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--highlight);
-        }
-        
-        /* Splash Screen */
-        .splash-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--main-bg);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            transition: opacity 0.5s ease-in-out;
-        }
-        
-        .splash-screen.fade-out {
-            opacity: 0;
-        }
-        
-        #splash-logo {
-            font-size: 80px;
-            margin-bottom: 40px;
-            text-shadow: 0 0 15px var(--main-text);
-            animation: pulsate 2s infinite;
-        }
-        
-        @keyframes pulsate {
-            0% { opacity: 0.8; }
-            50% { opacity: 1.0; text-shadow: 0 0 20px var(--main-text); }
-            100% { opacity: 0.8; }
-        }
-        
-        .loading-indicator {
-            width: 300px;
-            text-align: center;
-        }
-        
-        .loading-bar {
-            width: 100%;
-            height: 6px;
-            background-color: var(--terminal-bg);
-            border-radius: 3px;
-            overflow: hidden;
-            margin-bottom: 10px;
-        }
-        
-        .loading-progress {
-            height: 100%;
-            width: 0;
-            background: var(--highlight);
-            border-radius: 3px;
-            transition: width 0.3s ease-out;
-        }
-        
-        .loading-status {
-            font-size: 14px;
-        }
-        
-        /* Login Screen */
-        .login-screen {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--main-bg);
-            background-image: radial-gradient(circle at center, var(--button-bg) 0%, var(--main-bg) 100%);
-            z-index: 9998;
-            opacity: 0;
-            transition: opacity 0.5s ease-in-out;
-        }
-        
-        .login-screen.show {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            opacity: 1;
-        }
-        
-        .login-container {
-            width: 360px;
-            padding: 30px;
-            background-color: var(--window-body);
-            border-radius: 10px;
-            border: 1px solid var(--main-border);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-        }
-        
-        .login-logo {
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 50px;
-        }
-        
-        .login-heading {
-            text-align: center;
-            font-size: 24px;
-            font-weight: 400;
-            margin-bottom: 30px;
-        }
-        
-        .login-form {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .login-input {
-            position: relative;
-            margin-bottom: 20px;
-        }
-        
-        .login-input input {
-            width: 100%;
-            padding: 10px 15px;
-            font-size: 16px;
-            background-color: var(--terminal-bg);
-            color: var(--main-text);
-            border: 1px solid var(--main-border);
-            border-radius: 4px;
-            outline: none;
-        }
-        
-        .login-input input:focus {
-            box-shadow: 0 0 0 2px var(--highlight);
-        }
-        
-        .login-button {
-            padding: 12px;
-            background-color: var(--highlight);
-            color: var(--main-bg);
-            font-size: 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: opacity 0.3s;
-        }
-        
-        .login-button:hover {
-            opacity: 0.9;
-        }
-        
-        .login-error {
-            color: #ff4081;
-            font-size: 14px;
-            text-align: center;
-            margin-top: 15px;
-            min-height: 20px;
-        }
-        
-        /* Desktop Environment */
-        .desktop {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--main-bg);
-            background-image: 
-                radial-gradient(var(--main-border) 1px, transparent 1px),
-                radial-gradient(var(--main-border) 1px, transparent 1px);
-            background-size: 50px 50px;
-            background-position: 0 0, 25px 25px;
-            background-attachment: fixed;
-            opacity: 0.8;
-            overflow: hidden;
-            display: none;
-            opacity: 0;
-            transition: opacity 0.5s ease-in-out;
-        }
-        
-        .desktop.show {
-            display: block;
-            opacity: 1;
-        }
-        
-        /* Desktop (where icons appear) */
-        .desktop-icons {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, 80px);
-            grid-gap: 20px;
-            padding: 20px;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-        
-        .desktop-icon {
-            width: 80px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 5px;
-        }
-        
-        .desktop-icon:hover {
-            background-color: rgba(var(--highlight), 0.3);
-        }
-        
-        .icon-image {
-            width: 48px;
-            height: 48px;
-            background-color: var(--icon-bg);
-            border: 1px solid var(--main-border);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 24px;
-            margin-bottom: 5px;
-            color: var(--main-text);
-        }
-        
-        .icon-text {
-            text-align: center;
-            font-size: 12px;
-            word-wrap: break-word;
-            max-width: 80px;
-            text-shadow: 1px 1px 2px black;
-        }
-        
-        /* Workspace (where windows appear) */
-        .workspace {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 40px; /* Space for taskbar */
-            overflow: hidden;
-        }
-        
-        /* Taskbar */
-        .taskbar {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 40px;
-            background-color: var(--terminal-bg);
-            border-top: 1px solid var(--main-border);
-            display: flex;
-            z-index: 1000;
-        }
-        
-        .start-button {
-            width: 60px;
-            height: 40px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: none;
-            border: none;
-            color: var(--main-text);
-            font-weight: bold;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        
-        .start-button:hover {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .taskbar-items {
-            flex: 1;
-            display: flex;
-            padding: 0 5px;
-            overflow-x: auto;
-            overflow-y: hidden;
-        }
-        
-        .taskbar-item {
-            height: 40px;
-            min-width: 160px;
-            max-width: 200px;
-            display: flex;
-            align-items: center;
-            padding: 0 10px;
-            margin-right: 4px;
-            background-color: rgba(60, 60, 60, 0.3);
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .taskbar-item:hover {
-            background-color: rgba(80, 80, 80, 0.5);
-        }
-        
-        .taskbar-item.active {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .taskbar-item-icon {
-            margin-right: 8px;
-            font-size: 16px;
-        }
-        
-        .taskbar-item-title {
-            flex: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .system-tray {
-            display: flex;
-            align-items: center;
-            padding: 0 10px;
-        }
-        
-        .clock {
-            font-size: 14px;
-            min-width: 55px;
-            text-align: center;
-        }
-        
-        /* Start Menu */
-        .start-menu {
-            position: absolute;
-            bottom: 40px;
-            left: 0;
-            width: 300px;
-            max-height: 0;
-            background-color: var(--menu-bg);
-            border-radius: 0 6px 0 0;
-            border: 1px solid var(--main-border);
-            border-bottom: none;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-            overflow: hidden;
-            z-index: 1001;
-            transition: max-height 0.3s ease-out;
-        }
-        
-        .start-menu.active {
-            max-height: 600px;
-        }
-        
-        .user-info {
-            padding: 20px;
-            display: flex;
-            align-items: center;
-            background: linear-gradient(135deg, var(--highlight) 0%, var(--main-border) 100%);
-            color: var(--main-bg);
-        }
-        
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background-color: var(--main-bg);
-            margin-right: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-        
-        .user-name {
-            font-size: 16px;
-            font-weight: 500;
-        }
-        
-        .menu-items {
-            padding: 10px 0;
-        }
-        
-        .menu-item {
-            padding: 10px 20px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            display: flex;
-            align-items: center;
-        }
-        
-        .menu-item:hover {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .menu-item-icon {
-            margin-right: 10px;
-            font-size: 16px;
-            width: 20px;
-            text-align: center;
-        }
-        
-        .menu-separator {
-            height: 1px;
-            background-color: var(--main-border);
-            margin: 10px 0;
-            opacity: 0.3;
-        }
-        
-        /* Window System */
-        .window {
-            position: absolute;
-            background-color: var(--window-body);
-            border: 1px solid var(--main-border);
-            border-radius: 6px;
-            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.4);
-            display: flex;
-            flex-direction: column;
-            min-width: 300px;
-            min-height: 200px;
-            z-index: 100;
-            transition: transform 0.3s, opacity 0.3s;
-        }
-        
-        .window.minimized {
-            transform: scale(0.7);
-            opacity: 0;
-            pointer-events: none;
-        }
-        
-        .window.maximized {
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            height: calc(100% - 40px) !important;
-            border-radius: 0;
-        }
-        
-        .window-header {
-            height: 32px;
-            background-color: var(--window-header);
-            border-radius: 6px 6px 0 0;
-            display: flex;
-            align-items: center;
-            padding: 0 10px;
-            cursor: move;
-        }
-        
-        .window-title {
-            flex: 1;
-            font-size: 14px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            user-select: none;
-        }
-        
-        .window-controls {
-            display: flex;
-        }
-        
-        .window-control {
-            width: 24px;
-            height: 24px;
-            background: none;
-            border: none;
-            color: var(--main-text);
-            font-size: 14px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            margin-left: 2px;
-        }
-        
-        .window-control:hover {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .window-content {
-            flex: 1;
-            overflow: auto;
-            position: relative;
-        }
-        
-        .app-loading {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: var(--window-body);
-            color: var(--main-text);
-            font-size: 14px;
-        }
-        
-        /* Context Menu */
-        .context-menu {
-            position: absolute;
-            min-width: 150px;
-            background-color: var(--menu-bg);
-            border: 1px solid var(--main-border);
-            border-radius: 4px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-            z-index: 2000;
-            padding: 5px 0;
-        }
-        
-        .context-menu-item {
-            padding: 8px 15px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        
-        .context-menu-item:hover {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .context-menu-separator {
-            height: 1px;
-            background-color: var(--main-border);
-            margin: 5px 0;
-            opacity: 0.3;
-        }
-        
-        /* Notifications */
-        .notification-container {
-            position: fixed;
-            bottom: 50px;
-            right: 10px;
-            width: 300px;
-            z-index: 1500;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+    <!-- ✅ FIXED: Replaced inline styles with a linked stylesheet -->
+    <link rel="stylesheet" href="genesis-os.css">
 
-        .error-banner {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            background-color: #f44336;
-            color: #ffffff;
-            padding: 10px;
-            text-align: center;
-            z-index: 2000;
-            display: none;
-        }
-
-        .debug-console {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 200px;
-            background: #111;
-            color: #0f0;
-            font-family: monospace;
-            padding: 5px;
-            overflow: auto;
-            z-index: 2500;
-            display: none;
-        }
-        
-        .notification {
-            background-color: var(--window-body);
-            border: 1px solid var(--main-border);
-            border-radius: 6px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-            padding: 15px;
-            transform: translateX(120%);
-            transition: transform 0.3s ease-out;
-        }
-        
-        .notification.show {
-            transform: translateX(0);
-        }
-        
-        .notification-title {
-            font-weight: 500;
-            margin-bottom: 5px;
-        }
-        
-        .notification-body {
-            font-size: 14px;
-            opacity: 0.8;
-        }
-        
-        /* Modal Dialog */
-        .modal-backdrop {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.6);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 2000;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.3s;
-        }
-        
-        .modal-backdrop.show {
-            opacity: 1;
-            pointer-events: auto;
-        }
-        
-        .modal {
-            width: 400px;
-            background-color: var(--window-body);
-            border: 1px solid var(--main-border);
-            border-radius: 6px;
-            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.5);
-            transform: translateY(-20px);
-            transition: transform 0.3s;
-        }
-        
-        .modal-backdrop.show .modal {
-            transform: translateY(0);
-        }
-        
-        .modal-header {
-            padding: 15px;
-            border-bottom: 1px solid var(--main-border);
-        }
-        
-        .modal-title {
-            font-size: 18px;
-            font-weight: 500;
-        }
-        
-        .modal-body {
-            padding: 15px;
-            max-height: 70vh;
-            overflow-y: auto;
-        }
-        
-        .modal-footer {
-            padding: 15px;
-            border-top: 1px solid var(--main-border);
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-        }
-        
-        .button {
-            padding: 8px 15px;
-            border: 1px solid var(--main-border);
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background-color 0.2s;
-            background-color: var(--button-bg);
-            color: var(--main-text);
-        }
-        
-        .button-primary {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-            border-color: var(--highlight);
-        }
-        
-        .button:hover {
-            opacity: 0.9;
-        }
-        
-        /* Error Screen */
-        .error-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--main-bg);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            display: none;
-        }
-        
-        .error-container {
-            width: 500px;
-            padding: 30px;
-            background-color: var(--window-body);
-            border: 1px solid var(--main-border);
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            text-align: center;
-        }
-        
-        .error-container h2 {
-            color: #f44336;
-            margin-bottom: 20px;
-        }
-        
-        .error-container p {
-            margin-bottom: 25px;
-            opacity: 0.8;
-        }
-        
-        .error-container pre {
-            text-align: left;
-            background-color: var(--terminal-bg);
-            padding: 15px;
-            border-radius: 4px;
-            overflow: auto;
-            margin-bottom: 25px;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-        
-        #restart-button {
-            padding: 10px 20px;
-            background-color: var(--highlight);
-            color: var(--main-bg);
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        
-        #restart-button:hover {
-            opacity: 0.9;
-        }
-        
-        /* Mathematical Sandbox specific styles */
-        .grid-container {
-            border: 1px solid var(--main-border);
-            overflow: auto;
-            flex: 1;
-        }
-        
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(1, 1fr);
-            grid-gap: 1px;
-            background-color: var(--main-border);
-            padding: 1px;
-            min-width: 100%;
-        }
-        
-        .cell {
-            background-color: var(--cell-default-bg);
-            color: var(--cell-default-text);
-            min-height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 5px;
-            position: relative;
-            cursor: pointer;
-            overflow: hidden;
-            font-size: 12px;
-        }
-        
-        .cell.split {
-            padding: 0;
-            display: grid;
-            grid-template-columns: repeat(1, 1fr);
-            grid-gap: 1px;
-            background-color: var(--main-border);
-        }
-        
-        .sub-cell {
-            background-color: var(--cell-default-bg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 20px;
-            text-align: center;
-            cursor: pointer;
-            padding: 2px;
-        }
-        
-        /* File Manager specific styles */
-        .file-browser {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        
-        .file-toolbar {
-            display: flex;
-            align-items: center;
-            height: 40px;
-            padding: 0 10px;
-            background-color: var(--terminal-bg);
-            border-bottom: 1px solid var(--main-border);
-        }
-        
-        .file-browser-content {
-            display: flex;
-            flex: 1;
-        }
-        
-        .file-sidebar {
-            width: 200px;
-            background-color: var(--terminal-bg);
-            border-right: 1px solid var(--main-border);
-            overflow-y: auto;
-        }
-        
-        .file-sidebar-item {
-            padding: 8px 15px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-        }
-        
-        .file-sidebar-item:hover {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .file-sidebar-item.active {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .file-sidebar-icon {
-            margin-right: 10px;
-            font-size: 16px;
-        }
-        
-        .file-main {
-            flex: 1;
-            overflow: auto;
-            padding: 10px;
-        }
-        
-        .file-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-            gap: 10px;
-        }
-        
-        .file-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 10px 5px;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        
-        .file-item:hover {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .file-item.selected {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .file-icon {
-            font-size: 36px;
-            margin-bottom: 5px;
-        }
-        
-        .file-name {
-            font-size: 12px;
-            text-align: center;
-            word-break: break-word;
-            max-width: 100%;
-        }
-        
-        /* Terminal specific styles */
-        .terminal {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            background-color: var(--terminal-bg);
-            color: var(--main-text);
-            font-family: 'Courier New', monospace;
-            padding: 10px;
-            overflow: auto;
-        }
-        
-        .terminal-output {
-            flex: 1;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
-            line-height: 1.3;
-        }
-        
-        .terminal-input-line {
-            display: flex;
-            margin-top: 10px;
-        }
-        
-        .terminal-prompt {
-            color: var(--highlight);
-            margin-right: 10px;
-        }
-        
-        .terminal-input {
-            flex: 1;
-            background: none;
-            border: none;
-            color: var(--main-text);
-            font-family: 'Courier New', monospace;
-            font-size: inherit;
-            outline: none;
-        }
-        
-        /* Code Editor specific styles */
-        .editor {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        
-        .editor-toolbar {
-            display: flex;
-            align-items: center;
-            height: 40px;
-            padding: 0 10px;
-            background-color: var(--terminal-bg);
-            border-bottom: 1px solid var(--main-border);
-        }
-        
-        .editor-content {
-            flex: 1;
-            position: relative;
-        }
-        
-        .editor-textarea {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            padding: 10px;
-            background-color: var(--terminal-bg);
-            color: var(--main-text);
-            border: none;
-            resize: none;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            line-height: 1.5;
-            tab-size: 4;
-            outline: none;
-        }
-        
-        /* Settings App specific styles */
-        .settings {
-            display: flex;
-            height: 100%;
-        }
-        
-        .settings-sidebar {
-            width: 220px;
-            background-color: var(--terminal-bg);
-            border-right: 1px solid var(--main-border);
-            overflow-y: auto;
-            padding: 15px 0;
-        }
-        
-        .settings-nav-item {
-            padding: 10px 20px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        
-        .settings-nav-item:hover {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .settings-nav-item.active {
-            background-color: var(--highlight);
-            color: var(--main-bg);
-        }
-        
-        .settings-content {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-        }
-        
-        .settings-section {
-            margin-bottom: 30px;
-        }
-        
-        .settings-section-title {
-            font-size: 18px;
-            font-weight: 500;
-            margin-bottom: 15px;
-            color: var(--highlight);
-        }
-        
-        .settings-option {
-            margin-bottom: 15px;
-        }
-        
-        .settings-label {
-            display: block;
-            margin-bottom: 5px;
-            font-size: 14px;
-        }
-        
-        .settings-input {
-            width: 100%;
-            padding: 8px 10px;
-            background-color: var(--terminal-bg);
-            color: var(--main-text);
-            border: 1px solid var(--main-border);
-            border-radius: 4px;
-        }
-        
-        .settings-select {
-            width: 100%;
-            padding: 8px 10px;
-            background-color: var(--terminal-bg);
-            color: var(--main-text);
-            border: 1px solid var(--main-border);
-            border-radius: 4px;
-        }
-        
-        /* CRT effects */
-        .crt-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
-            background-size: 100% 4px;
-            z-index: 9999;
-            opacity: 0.15;
-            pointer-events: none;
-            display: none; /* Toggled by user preference */
-        }
-        
-        .scanline {
-            width: 100%;
-            height: 100%;
-            position: fixed;
-            top: 0;
-            left: 0;
-            background: linear-gradient(to bottom, 
-                transparent 0%, 
-                rgba(var(--main-text-rgb, 51, 255, 51), 0.1) 50%, 
-                transparent 100%);
-            animation: scanline 10s linear infinite;
-            opacity: 0.3;
-            pointer-events: none;
-            z-index: 9998;
-            display: none; /* Toggled by user preference */
-        }
-        
-        @keyframes scanline {
-            0% { transform: translateY(0); }
-            100% { transform: translateY(100vh); }
-        }
-        
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .desktop-icons {
-                grid-template-columns: repeat(auto-fill, 70px);
-                grid-gap: 10px;
-            }
-            
-            .desktop-icon {
-                width: 70px;
-            }
-            
-            .icon-image {
-                width: 40px;
-                height: 40px;
-                font-size: 20px;
-            }
-            
-            .icon-text {
-                font-size: 11px;
-                max-width: 70px;
-            }
-            
-            .window {
-                width: 90% !important;
-                height: 80% !important;
-                top: 10% !important;
-                left: 5% !important;
-            }
-            
-            .settings-sidebar {
-                width: 180px;
-            }
-        }
-    </style>
 </head>
 <body>
     <!-- CRT effects (toggled by settings) -->
@@ -1326,26 +100,26 @@ ob_end_flush();
             <div class="loading-bar">
                 <div id="loading-progress" class="loading-progress"></div>
             </div>
-            <div id="loading-status" class="loading-status">Initializing system...</div>
+            <div id="loading-status">Initializing...</div>
         </div>
     </div>
     
 	<!-- Login Screen -->
 	<div id="login-screen" class="login-screen">
 		<div class="login-container">
-			<div class="login-logo">
-				G
-			</div>
-			<h2 class="login-heading">Genesis OS</h2>
-			<form id="login-form" class="login-form" autocomplete="on">
+			<h2 class="login-heading">Genesis OS Login</h2>
+			<form id="login-form" autocomplete="on">
 				<div class="login-input">
-					<input type="text" id="username" name="username" placeholder="Username" required autocomplete="username">
+					<input type="text" id="username" name="username" placeholder="Username" required>
 				</div>
 				<div class="login-input">
-					<input type="password" id="password" name="password" placeholder="Password" required autocomplete="current-password">
+					<input type="password" id="password" name="password" placeholder="Password" required>
 				</div>
 				<button type="submit" class="login-button">Log In</button>
 				<div id="login-error" class="login-error"></div>
+                <div class="login-extra-links">
+                    <a id="register-link" style="display: none;">Register as Developer</a>
+                </div>
 			</form>
 		</div>
 	</div>
@@ -1398,12 +172,10 @@ ob_end_flush();
     <div id="error-screen" class="error-screen">
         <div class="error-container">
             <h2 id="error-title">System Error</h2>
-            <p id="error-message">An error occurred while loading Genesis OS.</p>
-            <pre id="error-details" style="display:none"></pre>
-            <button id="restart-button">Restart</button>
+            <p id="error-message">An error occurred.</p>
+            <button id="restart-button" class="button" onclick="window.location.reload()">Restart</button>
         </div>
     </div>
-</body>
 	
 <script>
 
@@ -1641,30 +413,31 @@ ob_end_flush();
 		 * @private
 		 * @async
 		 */
-					async _loadConfiguration() {
+		async _loadConfiguration() {
 			try {
-				// In the Kernel._loadConfiguration method, change the fetch request to:
-				const formData = new FormData();
-				formData.append('method', 'getSystemInfo');
-				formData.append('params', JSON.stringify({}));
-
-									const response = await fetch(`genesis-os.php?api=system&v=${this.cacheBust}&_=${Date.now()}`, {
-					method: 'POST',
-					body: formData
-				});
-				
+				const response = await fetch(`?api=system&method=getSystemInfo`);
 				if (!response.ok) {
-					throw new Error(`Failed to load system configuration: ${response.status} ${response.statusText}`);
+					throw new Error(`HTTP error! status: ${response.status}`);
 				}
 				
 				const result = await response.json();
-				
 				if (!result.success) {
-					throw new Error(`Failed to load system configuration: ${result.message}`);
+					throw new Error(result.message || 'Failed to fetch system info.');
 				}
 				
 				this.config = result.data;
-				this.log.info('System configuration loaded successfully');
+				this.log.info('System configuration loaded successfully.');
+				
+				// ✅ HARDENED & CORRECT: Use optional chaining to safely access nested properties.
+				const allowRegistration = this.config?.security?.allow_developer_registration;
+
+				if (allowRegistration) {
+					const registerLink = document.getElementById('register-link');
+					if (registerLink) {
+						registerLink.style.display = 'inline';
+						registerLink.onclick = () => this.modules.ui.showRegistrationDialog();
+					}
+				}
 				
 				return true;
 			} catch (error) {
@@ -1968,74 +741,48 @@ ob_end_flush();
 			}
 		}
 		
-		/**
-		 * Show the login screen
-		 * @private
-		 */
 		_showLoginScreen() {
-			// Hide splash screen
-			const splashScreen = document.getElementById('splash-screen');
-			splashScreen.classList.add('fade-out');
+			const splash = document.getElementById('splash-screen');
+			const login = document.getElementById('login-screen');
+			splash.classList.add('fade-out');
 			
 			setTimeout(() => {
-				splashScreen.style.display = 'none';
-				
-				// Show login screen
-									const loginScreen = document.getElementById('login-screen');
-									loginScreen.style.display = 'flex';
-
-									// Apply translations
-									this.modules.ui.applyTranslations();
-				
-				setTimeout(() => {
-					loginScreen.classList.add('show');
-					
-					// Focus username field
-					document.getElementById('username').focus();
-				}, 50);
-				
-				// Set up login form submission
-				const loginForm = document.getElementById('login-form');
-				const loginError = document.getElementById('login-error');
-				
-									loginForm.onsubmit = async (e) => {
-											e.preventDefault();
-											loginError.textContent = '';
-					
-					const username = document.getElementById('username').value;
-					const password = document.getElementById('password').value;
-					
-											if (!username || !password) {
-													loginError.textContent = this.translate('login_missing');
-													return;
-											}
-					
-					try {
-						const authService = this.services.get('auth');
-						const result = await authService.call('login', { username, password });
-						
-						// Login successful
-						this.modules.events.emit('auth:login', {
-							user: result.user,
-							permissions: result.permissions
-						});
-						
-						// Reset form
-						loginForm.reset();
-						
-						// Hide login screen
-						loginScreen.classList.remove('show');
-						setTimeout(() => {
-							loginScreen.style.display = 'none';
-						}, 500);
-						
-					} catch (error) {
-						loginError.textContent = error.message || 'Login failed';
-						document.getElementById('password').value = '';
-						document.getElementById('password').focus();
-					}
-				};
+				splash.style.display = 'none';
+				login.style.display = 'flex';
+				setTimeout(() => login.classList.add('show'), 50);
 			}, 500);
+
+			// ✅ FIXED: This logic now correctly runs every time the login screen is shown.
+			const allowRegistration = this.config?.security?.allow_developer_registration;
+			const registerLink = document.getElementById('register-link');
+
+			if (allowRegistration && registerLink) {
+				// Only show the link if no user is currently logged in.
+				// This handles the case where a user logs out and returns to this screen.
+				if (!this.currentUser) {
+					registerLink.style.display = 'inline';
+					registerLink.onclick = () => this.modules.ui.showRegistrationDialog();
+				} else {
+					registerLink.style.display = 'none';
+				}
+			} else if (registerLink) {
+				registerLink.style.display = 'none';
+			}
+
+			const form = document.getElementById('login-form');
+			form.onsubmit = async (e) => {
+				e.preventDefault();
+				const errorDiv = document.getElementById('login-error');
+				errorDiv.textContent = '';
+				try {
+					const result = await this.api.auth.call('login', { username: form.username.value, password: form.password.value });
+					this.modules.events.emit('auth:login', { user: result.user, permissions: result.permissions });
+					login.classList.remove('show');
+					setTimeout(() => login.style.display = 'none', 500);
+				} catch (error) {
+					errorDiv.textContent = error.message;
+				}
+			};
 		}
 		
 		/**
@@ -2116,10 +863,6 @@ ob_end_flush();
 			}, 500);
 		}
 		
-		/**
-		 * Create desktop icons
-		 * @private
-		 */
 		_createDesktopIcons() {
 			const desktopIcons = document.getElementById('desktop-icons');
 			desktopIcons.innerHTML = '';
@@ -2127,68 +870,51 @@ ob_end_flush();
 			// Log the start of the process for debugging
 			this.log.debug('Creating desktop icons');
 			
-			// Get combined list of system and installed apps
-			const allApps = [];
-			
-			// Request app list from the apps service
-			this.services.get('apps').call('listApps').then(systemApps => {
-				// Add system apps
-				systemApps.forEach(app => {
-					if (app.desktopIcon !== false) { // FIXED: Corrected logical condition
-						allApps.push(app);
+			// Request the full app list from the service. This is the single source of truth.
+			this.services.get('apps').call('listApps').then(allApps => {
+				
+				// Filter for built-in apps only. External/filesystem apps have a `_path` property, 
+                // while built-in apps do not. This prevents external apps from cluttering the desktop.
+                const builtInApps = allApps.filter(app => !app._path);
+
+				this.log.debug(`Found ${builtInApps.length} built-in apps for desktop icons.`);
+				
+				// Create an icon for each built-in app that is marked for desktop display.
+				builtInApps.forEach(app => {
+					if (app.desktopIcon !== false) {
+						const iconElement = document.createElement('div');
+						iconElement.className = 'desktop-icon';
+						iconElement.dataset.appId = app.id;
+						
+						const iconImage = document.createElement('div');
+						iconImage.className = 'icon-image';
+						iconImage.textContent = app.icon || app.id.charAt(0).toUpperCase();
+						
+						const iconText = document.createElement('div');
+						iconText.className = 'icon-text';
+						iconText.textContent = app.title;
+						
+						iconElement.appendChild(iconImage);
+						iconElement.appendChild(iconText);
+						
+						// Add click handler to launch the application.
+						iconElement.addEventListener('click', () => {
+							this.launchApplication(app.id);
+						});
+						
+						// Add context menu handler (currently does nothing).
+						iconElement.addEventListener('contextmenu', (e) => {
+							e.preventDefault();
+							// Custom context menu for desktop icons could be added here.
+						});
+						
+						desktopIcons.appendChild(iconElement);
 					}
-				});
-				
-				// Add installed apps from localStorage
-				try {
-					const installedApps = JSON.parse(localStorage.getItem('gos_installed_apps') || '[]');
-					this.log.debug(`Found ${installedApps.length} installed apps`);
-					
-					installedApps.forEach(app => {
-						if (app.desktopIcon !== false) {
-							allApps.push(app);
-						}
-					});
-				} catch (e) {
-					this.log.warn('Failed to load installed apps from localStorage', e);
-				}
-				
-				this.log.debug(`Creating ${allApps.length} desktop icons`);
-				
-				// Create icon for each app
-				allApps.forEach(app => {
-					const iconElement = document.createElement('div');
-					iconElement.className = 'desktop-icon';
-					iconElement.dataset.appId = app.id;
-					
-					const iconImage = document.createElement('div');
-					iconImage.className = 'icon-image';
-					iconImage.textContent = app.icon || app.id.charAt(0).toUpperCase();
-					
-					const iconText = document.createElement('div');
-					iconText.className = 'icon-text';
-					iconText.textContent = app.title;
-					
-					iconElement.appendChild(iconImage);
-					iconElement.appendChild(iconText);
-					
-					// Add click handler
-					iconElement.addEventListener('click', () => {
-						this.launchApplication(app.id);
-					});
-					
-					// Add context menu handler
-					iconElement.addEventListener('contextmenu', (e) => {
-						e.preventDefault();
-						// Custom context menu for desktop icons could be added here
-					});
-					
-					desktopIcons.appendChild(iconElement);
 				});
 			}).catch(error => {
 				this.log.error('Failed to load app list for desktop icons:', error);
 				
-				// Show error notification
+				// Show error notification to the user.
 				this.modules.ui.showNotification(
 					'Error',
 					'Failed to load desktop applications',
@@ -2348,120 +1074,82 @@ ob_end_flush();
 			});
 		}
 		
-		/**
-		 * Populate the start menu with content
+/**
+		 * Populate the start menu with content.
+		 * ✅ MODIFIED: Now includes a search bar and moves the logout button.
 		 * @private
 		 */
 		_populateStartMenu() {
 			const startMenu = document.getElementById('start-menu');
-			
-			// Create user info section
-			const userInfo = document.createElement('div');
-			userInfo.className = 'user-info';
-			
 			const userName = this.currentUser ? this.currentUser.name : 'Guest';
-			userInfo.innerHTML = `
-				<div class="user-avatar">${userName.charAt(0)}</div>
-				<div class="user-name">${userName}</div>
+
+			// --- 1. Create the new HTML structure ---
+			startMenu.innerHTML = `
+				<div class="user-info" style="display: flex; justify-content: space-between; align-items: center;">
+					<div style="display: flex; align-items: center;">
+						<div class="user-avatar">${userName.charAt(0)}</div>
+						<div class="user-name">${userName}</div>
+					</div>
+					<div class="menu-item" data-action="logout" title="Log Out" style="padding: 5px 10px; margin-right: 10px;">
+						<div class="menu-item-icon">🚪</div>
+					</div>
+				</div>
+				<div class="start-menu-search-box" style="padding: 5px 10px;">
+					<input type="text" id="start-menu-search" placeholder="Search applications..." style="width: 100%; padding: 8px; background: var(--terminal-bg); border: 1px solid var(--main-border); color: var(--main-text); border-radius: 3px;">
+				</div>
+				<div class="menu-items"></div>
 			`;
 			
-			// Create menu items container
-			const menuItems = document.createElement('div');
-			menuItems.className = 'menu-items';
-			
-			// Get available applications from the apps service
+			const menuItemsContainer = startMenu.querySelector('.menu-items');
+
+			// --- 2. Fetch and render app list ---
 			this.services.get('apps').call('listApps').then(apps => {
 				let menuHtml = '';
-				
-				// Add apps to menu
 				apps.forEach(app => {
 					menuHtml += `
 						<div class="menu-item" data-app="${app.id}">
-							<div class="menu-item-icon">${app.icon}</div>
+							<div class="menu-item-icon">${app.icon || '📦'}</div>
 							<div>${app.title}</div>
 						</div>
 					`;
 				});
-				
-				// Add separator and system options
-				menuHtml += `
-					<div class="menu-separator"></div>
-					<div class="menu-item" data-action="settings">
-						<div class="menu-item-icon">⚙️</div>
-						<div>Settings</div>
-					</div>
-					<div class="menu-item" data-action="logout">
-						<div class="menu-item-icon">🚪</div>
-						<div>Log Out</div>
-					</div>
-				`;
-				
-				menuItems.innerHTML = menuHtml;
-				
-				// Clear existing content
-				startMenu.innerHTML = '';
-				
-				// Add sections to menu
-				startMenu.appendChild(userInfo);
-				startMenu.appendChild(menuItems);
-				
-				// Add event listeners for menu items
-				menuItems.querySelectorAll('.menu-item[data-app]').forEach(item => {
+				menuItemsContainer.innerHTML = menuHtml;
+
+				// --- 3. Add Event Listeners ---
+				menuItemsContainer.querySelectorAll('.menu-item[data-app]').forEach(item => {
 					item.addEventListener('click', () => {
-						const appId = item.getAttribute('data-app');
-						this.launchApplication(appId);
-						this.toggleStartMenu(); // Close menu
+						this.launchApplication(item.getAttribute('data-app'));
+						this.toggleStartMenu();
 					});
 				});
-				
-				// Add settings action
-				const settingsItem = menuItems.querySelector('.menu-item[data-action="settings"]');
-				if (settingsItem) {
-					settingsItem.addEventListener('click', () => {
-						this.launchApplication('settings');
-						this.toggleStartMenu(); // Close menu
+
+				// Logout button
+				startMenu.querySelector('.menu-item[data-action="logout"]').addEventListener('click', () => {
+					this.logout();
+				});
+
+				// Search functionality
+				document.getElementById('start-menu-search').addEventListener('input', (e) => {
+					const searchTerm = e.target.value.toLowerCase();
+					menuItemsContainer.querySelectorAll('.menu-item[data-app]').forEach(item => {
+						const appName = item.textContent.toLowerCase();
+						if (appName.includes(searchTerm)) {
+							item.style.display = 'flex';
+						} else {
+							item.style.display = 'none';
+						}
 					});
-				}
-				
-				// Add logout action
-				const logoutItem = menuItems.querySelector('.menu-item[data-action="logout"]');
-				if (logoutItem) {
-					logoutItem.addEventListener('click', () => {
-						this.logout();
-						this.toggleStartMenu(); // Close menu
-					});
-				}
+				});
+
 			}).catch(error => {
 				this.log.error('Failed to load app list for start menu', error);
-				menuItems.innerHTML = `
-					<div class="menu-item">Error loading applications</div>
-					<div class="menu-separator"></div>
-					<div class="menu-item" data-action="logout">Log Out</div>
-				`;
-				
-				// Clear existing content
-				startMenu.innerHTML = '';
-				
-				// Add sections to menu
-				startMenu.appendChild(userInfo);
-				startMenu.appendChild(menuItems);
-				
-				// Add logout action
-				const logoutItem = menuItems.querySelector('.menu-item[data-action="logout"]');
-				if (logoutItem) {
-					logoutItem.addEventListener('click', () => {
-						this.logout();
-						this.toggleStartMenu(); // Close menu
-					});
-				}
+				menuItemsContainer.innerHTML = `<div class="menu-item">Error loading applications</div>`;
 			});
 		}
 		
 		/**
 		 * Load the application's entry point and hand over control.
-		 * Supports:
-		 *   • external ES modules  → import(<path>).main()
-		 *   • built‑in functions   → window[<entry>]();
+		 * ✅ MODIFIED: Now uses the `getAppAsset` API endpoint to securely load module scripts.
 		 * @private
 		 * @param {Object} appInfo  -- manifest from getAppInfo
 		 * @param {Object} process  -- result of createProcess()
@@ -2469,32 +1157,87 @@ ob_end_flush();
 		async _bootApplicationCode(appInfo, process) {
 			const entry = appInfo.entry || '';
 
-			/* ---------- A. sandbox external modules --------------------- */
-			if (entry.endsWith('.js') || entry.includes('/')) {
-					const windowContent = document.querySelector(`#${process.windowId} .window-content`);
-					const iframe = document.createElement('iframe');
-					iframe.setAttribute('sandbox', 'allow-scripts');
-					iframe.style.border = 'none';
-					iframe.style.width = '100%';
-					iframe.style.height = '100%';
-					windowContent.innerHTML = '';
-					windowContent.appendChild(iframe);
+			if (appInfo._path && entry.endsWith('.js')) {
+				const windowContent = document.querySelector(`#${process.windowId} .window-content`);
+				const iframe = document.createElement('iframe');
+				//iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+				// ✅ FIXED: Added 'allow-downloads', 'allow-popups', and 'allow-forms' to the sandbox.
+				// This resolves the download error and increases compatibility for applications.
+				iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads');
+				iframe.style.border = 'none';
+				iframe.style.width = '100%';
+				iframe.style.height = '100%';
+				windowContent.innerHTML = '';
+				windowContent.appendChild(iframe);
 
-					iframe.addEventListener('load', () => {
-							iframe.contentWindow.process = process;
-							const script = iframe.contentDocument.createElement('script');
-							script.type = 'module';
-							script.src = entry + (entry.includes('?') ? '&' : '?') + 'v=' + this.cacheBust;
-							iframe.contentDocument.body.appendChild(script);
-					});
+				// in genesis-os.php -> _bootApplicationCode method
 
-					iframe.srcdoc = '<!DOCTYPE html><html><body></body></html>';
-					return;
+				const gosApiProxy = {
+					app: { id: appInfo.id, title: appInfo.title, version: appInfo.version, params: process.params },
+					// ✅ ADDED: Expose the current user's data to the sandboxed application.
+					user: {
+						username: this.currentUser.username,
+						name: this.currentUser.name,
+						roles: this.currentUser.roles
+					},
+					window: {
+						getContainer: () => iframe.contentDocument.body,
+						setTitle: (newTitle) => {
+							const titleEl = document.querySelector(`#${process.windowId} .window-title`);
+							if (titleEl) titleEl.textContent = newTitle;
+						},
+						close: () => this.modules.process.terminateProcess(process.id),
+					},
+					filesystem: this.modules.filesystem,
+					ui: this.modules.ui,
+					events: this.modules.events,
+				};
+
+				iframe.addEventListener('load', () => {
+					try {
+						const scriptUrl = `//${window.location.host}${window.location.pathname}?api=apps&method=getAppAsset&appId=${appInfo.id}&file=${entry}&v=${this.cacheBust}`;
+						
+                        // ✅ SIMPLIFIED: Create a global map on the parent window to hold API proxies.
+                        // This is a more robust way to bridge the sandbox than deep-path traversal.
+                        if (!window.gosApiProxies) {
+                            window.gosApiProxies = {};
+                        }
+                        window.gosApiProxies[process.id] = gosApiProxy;
+
+                        const script = iframe.contentDocument.createElement('script');
+                        script.type = 'module';
+                        script.innerHTML = `
+                            try {
+                                const module = await import("${scriptUrl}");
+                                if (module.initialize && typeof module.initialize === 'function') {
+                                    // ✅ SIMPLIFIED: Retrieve the API proxy from the new global map.
+                                    const apiProxy = window.parent.gosApiProxies[${process.id}];
+                                    module.initialize(apiProxy);
+                                } else {
+                                    throw new Error("Application entry point must export an 'initialize' function.");
+                                }
+                            } catch(e) {
+                                document.body.innerHTML = '<div style="padding:20px;color:red;"><h4>App Error</h4><p>' + e.message + '</p></div>';
+                                console.error('Error within sandboxed app:', e);
+                            }
+                        `;
+                        
+                        iframe.contentDocument.body.appendChild(script);
+
+					} catch (e) {
+						this.log.error(`Failed to initialize sandboxed app ${appInfo.id}:`, e);
+						iframe.contentDocument.body.innerHTML = `<div style="padding:20px;color:red;"><h4>App Error</h4><p>${e.message}</p></div>`;
+					}
+				});
+
+				iframe.src = 'sandbox.html';
+				return;
 			}
-			/* ---------- B. built‑in global function ----------------------- */
+			
+			// --- Handle Built-in System Applications ---
 			else if (typeof window[entry] === 'function') {
-					await window[entry](process);
-					return;
+				await window[entry](process);
+				return;
 			}
 
 			throw new Error(`Cannot resolve entry point "${entry}" for app ${appInfo.id}`);
@@ -2729,7 +1472,7 @@ ob_end_flush();
 				user: this.currentUser ? {
 					username: this.currentUser.username,
 					name: this.currentUser.name,
-					role: this.currentUser.role
+					roles: this.currentUser.roles // <-- CORRECTED
 				} : null,
 				debug: this.state.debug,
 				useLocalFilesystem: this.state.useLocalFilesystem,
@@ -2831,7 +1574,7 @@ ob_end_flush();
 			}
 		}
 	}
-
+	
 	/**
 	 * Security Manager
 	 * Handles user authentication, permissions, and security policies.
@@ -2930,9 +1673,7 @@ ob_end_flush();
 			return Array.from(this.permissions);
 		}
 	}
-
-
-
+	
 	/**
 	 * File System
 	 * Provides a virtual file system interface
@@ -3954,7 +2695,7 @@ ob_end_flush();
 			}
 		}
 		
-		// Add this method inside the ProcessManager class in your main JavaScript
+		// This method is inside the ProcessManager class in genesis-os.php
 
 		_initializeDeveloperCenter(container, process, options) {
 			container.innerHTML = `
@@ -3964,12 +2705,12 @@ ob_end_flush();
 					<div id="dev-form-status" style="margin-bottom: 15px; padding: 10px; border-radius: 3px; display: none;"></div>
 					<form id="dev-submit-form">
 						<label for="manifest" style="display: block; margin-bottom: 5px;"><strong>Manifest (JSON)</strong></label>
-						<textarea id="manifest" name="manifest" rows="10" required style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 3px; font-family: monospace;"></textarea>
+						<textarea id="manifest" name="manifest" rows="10" required style="width: 100%; padding: 8px; border: 1px solid var(--main-border); border-radius: 3px; font-family: monospace;"></textarea>
 						<br><br>
 						<label for="code" style="display: block; margin-bottom: 5px;"><strong>Application Code (JavaScript)</strong></label>
-						<textarea id="code" name="code" rows="15" required style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 3px; font-family: monospace;"></textarea>
+						<textarea id="code" name="code" rows="15" required style="width: 100%; padding: 8px; border: 1px solid var(--main-border); border-radius: 3px; font-family: monospace;"></textarea>
 						<br><br>
-						<button type="submit" style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">Submit for Review</button>
+						<button type="submit" class="button button-primary">Submit for Review</button>
 					</form>
 				</div>
 			`;
@@ -3995,9 +2736,10 @@ ob_end_flush();
 					statusDiv.style.display = 'block';
 					return;
 				}
-
-				if (!manifest.id || !manifest.name || !manifest.entry_point) {
-					statusDiv.textContent = 'Error: Manifest is missing required fields (id, name, entry_point).';
+                
+                // ✅ FIXED: Validation now correctly checks for 'title' and 'entry' to match the backend.
+				if (!manifest.id || !manifest.title || !manifest.entry) {
+					statusDiv.textContent = 'Error: Manifest is missing required fields (id, title, entry).';
 					statusDiv.style.backgroundColor = '#f8d7da';
 					statusDiv.style.color = '#721c24';
 					statusDiv.style.display = 'block';
@@ -4010,19 +2752,14 @@ ob_end_flush();
 				statusDiv.style.color = '#383d41';
 				statusDiv.style.display = 'block';
 
-				// CORRECTED: Use .then() for success and .catch() for errors.
-				kernel.api.apps.call('submitApp', { manifest: manifestText, code: codeText })
+				this.kernel.api.apps.call('submitApp', { manifest: manifestText, code: codeText })
 					.then(data => {
-						// This block now runs ONLY on success.
-						// 'data' is the payload from the server response.
 						statusDiv.textContent = 'Success! Your application has been submitted for review.';
 						statusDiv.style.backgroundColor = '#d4edda';
 						statusDiv.style.color = '#155724';
 						form.reset();
 					})
 					.catch(error => {
-						// This block now runs ONLY on failure.
-						// 'error' is the Error object thrown by the service proxy.
 						statusDiv.textContent = 'Error: ' + error.message;
 						statusDiv.style.backgroundColor = '#f8d7da';
 						statusDiv.style.color = '#721c24';
@@ -4997,13 +3734,29 @@ ob_end_flush();
 		 * @param {Object} state - File manager state
 		 */
 		_navigateTo(windowId, path, state) {
+		
+			// --- SECURITY CHECK (JAIL) ---
+			const user = this.kernel.currentUser;
+			const isAdmin = user && user.roles.includes('admin');
+			//const isDeveloper = user && user.roles.includes('developer');
+			
+			//if (!isAdmin && !isDeveloper) {
+			if (!isAdmin) {
+				const userHomeDir = `/users/${user.username}`;
+				// Ensure the requested path is within the user's own home directory.
+				if (!path.startsWith(userHomeDir)) {
+					this.kernel.modules.ui.showNotification('Access Denied', 'You can only browse your user directory.', 3000);
+					return; // Abort the navigation.
+				}
+			}
+			// --- END SECURITY CHECK ---
+
 			// Update path input
 			document.getElementById(`${windowId}-path`).value = path;
 			
 			// Add to history if it's a new path
 			if (path !== state.currentPath) {
 				if (state.historyIndex < state.history.length - 1) {
-					// If we navigated back and then to a new path, truncate history
 					state.history = state.history.slice(0, state.historyIndex + 1);
 				}
 				
@@ -5325,7 +4078,32 @@ ob_end_flush();
 		}
 		
 		/**
-		 * Change directory in terminal
+		 * Normalizes a client-side path, resolving '..' and '.' segments.
+		 * @private
+		 * @param {string} path - The path to normalize.
+		 * @returns {string} The normalized, absolute path.
+		 */
+		_normalizePath(path) {
+			const parts = path.split('/').filter(p => p.length > 0);
+			const absolutes = [];
+			for (const part of parts) {
+				if (part === '.') {
+					continue;
+				}
+				if (part === '..') {
+					if (absolutes.length > 0) {
+						absolutes.pop();
+					}
+				} else {
+					absolutes.push(part);
+				}
+			}
+			// Return the joined path, ensuring it starts with a single '/'.
+			return '/' + absolutes.join('/');
+		}
+		
+		/**
+		 * Change directory in terminal, with security jail for non-admin users.
 		 * @private
 		 * @param {string} windowId - Window ID
 		 * @param {string} path - Directory path
@@ -5333,30 +4111,40 @@ ob_end_flush();
 		 */
 		_terminalChangeDirectory(windowId, path, state) {
 			if (!path) {
-				// Default to home directory
 				state.currentDirectory = `/users/${this.kernel.currentUser.username}`;
 				this._updateTerminalPrompt(windowId, state);
 				return;
 			}
 			
-			// Handle special cases
-			if (path === '~') {
-				state.currentDirectory = `/users/${this.kernel.currentUser.username}`;
-				this._updateTerminalPrompt(windowId, state);
-				return;
+			// Resolve the path parts first, then normalize to handle '..'
+			const resolvedPath = this._resolveTerminalPath(path, state.currentDirectory);
+			const normalizedPath = this._normalizePath(resolvedPath);
+
+			// --- SECURITY CHECK (JAIL) ---
+			const user = this.kernel.currentUser;
+			const isAdmin = user && user.roles.includes('admin');
+			//const isDeveloper = user && user.roles.includes('developer');
+
+			//if (!isAdmin && !isDeveloper) {
+			if (!isAdmin) {
+				const userHomeDir = `/users/${user.username}`;
+				// Check the final, normalized path against the user's home directory.
+				if (!normalizedPath.startsWith(userHomeDir)) {
+					this._appendTerminalOutput(windowId, `Error: Permission denied. Cannot navigate outside your home directory.`);
+					return; // Abort the directory change.
+				}
 			}
-			
-			// Resolve path
-			const targetPath = this._resolveTerminalPath(path, state.currentDirectory);
-			
-			this.kernel.modules.filesystem.listDirectory(targetPath).then(() => {
-				// Successfully listed directory, change to it
-				state.currentDirectory = targetPath;
+			// --- END SECURITY CHECK ---
+
+			// Verify the normalized directory exists and update the state.
+			this.kernel.api.filesystem.call('listDirectory', { path: normalizedPath }).then(() => {
+				state.currentDirectory = normalizedPath;
 				this._updateTerminalPrompt(windowId, state);
 			}).catch(error => {
 				this._appendTerminalOutput(windowId, `Error: ${error.message}`);
 			});
 		}
+
 		
 		/**
 		 * Show file content in terminal
@@ -5459,15 +4247,7 @@ ob_end_flush();
 			return currentDir === '/' ? `/${path}` : `${currentDir}/${path}`;
 		}
 		
-		/**
-		 * Initialize Code Editor application
-		 * @private
-		 * @param {HTMLElement} container - Container element
-		 * @param {Object} process - Process object
-		 * @param {Object} appInfo - Application metadata
-		 */
 		_initializeCodeEditor(container, process, appInfo) {
-			// Create editor UI
 			container.innerHTML = `
 				<div class="editor">
 					<div class="editor-toolbar">
@@ -5482,11 +4262,32 @@ ob_end_flush();
 				</div>
 			`;
 			
-			// Editor state
-			const state = {
-				currentFile: null,
-				modified: false
+			const state = { currentFile: null, modified: false };
+			const editorTextarea = document.getElementById(`${process.windowId}-editor`);
+			const filenameSpan = document.getElementById(`${process.windowId}-filename`);
+			
+			// --- SECURITY HELPER FUNCTION ---
+			// This function checks if a given path is within the user's home directory.
+			const isPathAllowed = (path) => {
+				if (!path) return false;
+
+				const user = this.kernel.currentUser;
+				const isAdmin = user && user.roles.includes('admin');
+
+				// Admins are always allowed full access.
+				if (isAdmin) {
+					return true;
+				}
+
+				// For standard users, the path must be within their home directory.
+				const normalizedPath = this._normalizePath(path);
+				const userHomeDir = `/users/${user.username}`;
+				return normalizedPath.startsWith(userHomeDir);
 			};
+			// --- END SECURITY HELPER ---
+
+			// ✅ NEW: Apply tab size from UI settings
+			editorTextarea.style.tabSize = this.kernel.modules.ui.currentTabSize || 4;
 			
 			// Initialize event handlers
 			document.getElementById(`${process.windowId}-new`).addEventListener('click', () => {
@@ -5500,17 +4301,24 @@ ob_end_flush();
 				state.modified = false;
 			});
 			
+			// SECURED "OPEN" ACTION
 			document.getElementById(`${process.windowId}-open`).addEventListener('click', () => {
 				if (state.modified && !confirm('You have unsaved changes. Discard them?')) {
 					return;
 				}
-				
 				const path = prompt('Enter file path to open:', `/users/${this.kernel.currentUser.username}/`);
 				if (!path) return;
-				
+
+				// --- SECURITY CHECK ---
+				if (!isPathAllowed(path)) {
+					this.kernel.modules.ui.showNotification('Access Denied', 'You can only open files from your home directory.', 4000);
+					return;
+				}
+				// --- END CHECK ---
+
 				this.kernel.modules.filesystem.readFile(path).then(result => {
-					document.getElementById(`${process.windowId}-editor`).value = result.content;
-					document.getElementById(`${process.windowId}-filename`).textContent = path;
+					editorTextarea.value = result.content;
+					filenameSpan.textContent = path;
 					state.currentFile = path;
 					state.modified = false;
 				}).catch(error => {
@@ -5518,30 +4326,61 @@ ob_end_flush();
 				});
 			});
 			
+			// SECURED "SAVE" ACTION
 			document.getElementById(`${process.windowId}-save`).addEventListener('click', () => {
-				const content = document.getElementById(`${process.windowId}-editor`).value;
+				const content = editorTextarea.value;
 				
 				if (state.currentFile) {
-					// Save to existing file
+					// A simple save on an already opened/allowed file does not need a new check.
 					this.kernel.modules.filesystem.writeFile(state.currentFile, content).then(() => {
 						this.kernel.modules.ui.showNotification('Saved', `File saved: ${state.currentFile}`, 2000);
 						state.modified = false;
+						filenameSpan.textContent = state.currentFile;
 					}).catch(error => {
 						this.kernel.modules.ui.showNotification('Error', `Could not save file: ${error.message}`, 5000);
 					});
 				} else {
-					// Ask for file path
+					// "Save As..." prompts for a new path.
 					const path = prompt('Enter file path to save:', `/users/${this.kernel.currentUser.username}/untitled.txt`);
 					if (!path) return;
-					
+
+					// --- SECURITY CHECK ---
+					if (!isPathAllowed(path)) {
+						this.kernel.modules.ui.showNotification('Access Denied', 'You can only save files within your home directory.', 4000);
+						return;
+					}
+					// --- END CHECK ---
+
 					this.kernel.modules.filesystem.writeFile(path, content).then(() => {
-						document.getElementById(`${process.windowId}-filename`).textContent = path;
+						filenameSpan.textContent = path;
 						state.currentFile = path;
 						state.modified = false;
 						this.kernel.modules.ui.showNotification('Saved', `File saved: ${path}`, 2000);
 					}).catch(error => {
 						this.kernel.modules.ui.showNotification('Error', `Could not save file: ${error.message}`, 5000);
 					});
+				}
+			});
+
+			// ✅ NEW: Enhanced keydown handler for Tab and Shift+Tab support
+			editorTextarea.addEventListener('keydown', (e) => {
+				if (e.key === 'Tab') {
+					e.preventDefault();
+					const tabSize = this.kernel.modules.ui.currentTabSize || 4;
+					const tab = ' '.repeat(tabSize);
+					const start = editorTextarea.selectionStart;
+					const end = editorTextarea.selectionEnd;
+
+					if (e.shiftKey) { // Handle outdenting (Shift+Tab)
+						const lineStart = editorTextarea.value.lastIndexOf('\n', start - 1) + 1;
+						if (editorTextarea.value.substring(lineStart, lineStart + tabSize) === tab) {
+							editorTextarea.setRangeText('', lineStart, lineStart + tabSize, 'end');
+						}
+					} else { // Handle indenting (Tab)
+						editorTextarea.setRangeText(tab, start, end, 'end');
+					}
+					state.modified = true;
+					filenameSpan.textContent = state.currentFile ? `${state.currentFile} *` : 'Untitled *';
 				}
 			});
 			
@@ -5554,56 +4393,61 @@ ob_end_flush();
 				}
 			});
 			
-			// Load file if specified in params
+			// SECURED INITIAL FILE LOAD FROM LAUNCH PARAMETERS
 			if (process.params.filePath) {
+				// --- SECURITY CHECK ---
+				if (!isPathAllowed(process.params.filePath)) {
+					this.kernel.modules.ui.showNotification('Access Denied', 'Cannot open file outside your home directory.', 4000);
+					filenameSpan.textContent = 'Access Denied';
+					editorTextarea.value = '## ACCESS DENIED ##\n\nYou do not have permission to open this file.';
+					editorTextarea.disabled = true;
+					return;
+				}
+				// --- END CHECK ---
+
 				this.kernel.modules.filesystem.readFile(process.params.filePath).then(result => {
-					document.getElementById(`${process.windowId}-editor`).value = result.content;
-					document.getElementById(`${process.windowId}-filename`).textContent = process.params.filePath;
+					editorTextarea.value = result.content;
+					filenameSpan.textContent = process.params.filePath;
 					state.currentFile = process.params.filePath;
 					state.modified = false;
 				}).catch(error => {
 					this.kernel.modules.ui.showNotification('Error', `Could not open file: ${error.message}`, 5000);
 				});
 			}
+			
 		}
 		
 		/**
 		 * Initialize Settings application
 		 * @private
-		 * @param {HTMLElement} container - Container element
-		 * @param {Object} process - Process object
-		 * @param {Object} appInfo - Application metadata
 		 */
 		_initializeSettings(container, process, appInfo) {
-			// Create settings UI
+			// ✅ MODIFIED: Add "Account" and "User Management" to the sidebar.
+			let adminNav = '';
+			if (this.kernel.modules.security.hasPermission('users.manage')) {
+				adminNav = `<div class="settings-nav-item" data-section="user-management">User Management</div>`;
+			}
+
 			container.innerHTML = `
 				<div class="settings">
 					<div class="settings-sidebar">
-						<div class="settings-nav-item active" data-section="appearance">Appearance</div>
-						<div class="settings-nav-item" data-section="system">System</div>
+						<div class="settings-nav-item active" data-section="account">My Account</div>
+						<div class="settings-nav-item" data-section="appearance">Appearance</div>
+						${adminNav}
 						<div class="settings-nav-item" data-section="about">About</div>
 					</div>
-					<div id="${process.windowId}-settings-content" class="settings-content">
-						<!-- Content will be loaded here -->
-					</div>
+					<div id="${process.windowId}-settings-content" class="settings-content"></div>
 				</div>
 			`;
-			
-			// Load appearance section by default
-			this._loadSettingsSection(process.windowId, 'appearance');
-			
-			// Set up section navigation
+
+			this._loadSettingsSection(process.windowId, 'account');
+
 			const sidebar = container.querySelector('.settings-sidebar');
 			sidebar.addEventListener('click', (e) => {
 				const item = e.target.closest('.settings-nav-item');
 				if (item) {
-					// Update active state
-					sidebar.querySelectorAll('.settings-nav-item').forEach(el => {
-						el.classList.remove('active');
-					});
+					sidebar.querySelectorAll('.settings-nav-item').forEach(el => el.classList.remove('active'));
 					item.classList.add('active');
-					
-					// Load section
 					const section = item.getAttribute('data-section');
 					this._loadSettingsSection(process.windowId, section);
 				}
@@ -5620,6 +4464,49 @@ ob_end_flush();
 			const content = document.getElementById(`${windowId}-settings-content`);
 			
 			switch (section) {
+				// ✅ NEW: "My Account" section for changing password.
+				case 'account':
+					const currentUser = this.kernel.currentUser;
+					content.innerHTML = `
+						<div class="settings-section">
+							<h2 class="settings-section-title">My Account</h2>
+							<p>Username: ${currentUser.username}</p>
+							<p>Name: ${currentUser.name}</p>
+							<p>Roles: ${currentUser.roles.join(', ')}</p>
+						</div>
+						<div class="settings-section">
+							<h3 class="settings-section-title">Change Password</h3>
+							<div class="form-group">
+								<label for="current-password">Current Password</label>
+								<input type="password" id="current-password">
+							</div>
+							<div class="form-group">
+								<label for="new-password">New Password</label>
+								<input type="password" id="new-password">
+							</div>
+							<button id="change-password-btn" class="button button-primary">Update Password</button>
+						</div>
+					`;
+					document.getElementById('change-password-btn').onclick = async () => {
+						const currentPassword = document.getElementById('current-password').value;
+						const newPassword = document.getElementById('new-password').value;
+						try {
+							await this.kernel.api.users.call('setPassword', { username: currentUser.username, currentPassword, newPassword });
+							this.kernel.modules.ui.showNotification('Success', 'Password updated successfully.');
+							document.getElementById('current-password').value = '';
+							document.getElementById('new-password').value = '';
+						} catch(e) {
+							this.kernel.modules.ui.showNotification('Error', e.message, 5000);
+						}
+					};
+					break;
+					
+				// ✅ NEW: "User Management" section for admins.
+				case 'user-management':
+					content.innerHTML = `<h2 class="settings-section-title">User Management</h2><div id="user-list">Loading...</div>`;
+					this._renderUserManagement(windowId);
+					break;
+					
 				case 'appearance':
 					content.innerHTML = `
 						<div class="settings-section">
@@ -5841,13 +4728,13 @@ ob_end_flush();
 					.app-grid, .submission-list { display: grid; gap: 20px; }
 					.app-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 					.app-card, .submission-card { background-color: var(--input-bg); border: 1px solid var(--border-color); border-radius: 5px; padding: 15px; text-align: center; }
-					.app-card .icon { font-size: 48px; }
 					.submission-card { text-align: left; }
 					.submission-card h4 { margin: 0 0 5px 0; }
+					.submission-details { margin-top: 15px; display: flex; gap: 10px; }
 					.submission-actions { margin-top: 15px; display: flex; gap: 10px; }
-					.submission-actions button { padding: 5px 10px; cursor: pointer; border: 1px solid; border-radius: 3px; }
-					.approve-btn { background-color: #28a745; color: white; border-color: #28a745; }
-					.reject-btn { background-color: #dc3545; color: white; border-color: #dc3545; }
+					.submission-actions button, .submission-details button { padding: 5px 10px; cursor: pointer; border: 1px solid var(--main-border); border-radius: 3px; background: var(--button-bg); color: var(--button-text); }
+					.approve-btn { background-color: #28a745 !important; color: white !important; border-color: #28a745 !important; }
+					.reject-btn { background-color: #dc3545 !important; color: white !important; border-color: #dc3545 !important; }
 				</style>
 				<div class="appstore-container">
 					<nav class="appstore-nav">
@@ -5865,26 +4752,22 @@ ob_end_flush();
 			`;
 
 			const nav = container.querySelector('.appstore-nav');
-			const tabs = container.querySelectorAll('.appstore-tab');
 			const panes = container.querySelectorAll('.appstore-pane');
+			let submissionsCache = [];
 
 			// --- 2. Tab Switching Logic ---
-			tabs.forEach(tab => {
-				tab.addEventListener('click', () => {
-					tabs.forEach(t => t.classList.remove('active'));
-					panes.forEach(p => p.classList.remove('active'));
-					tab.classList.add('active');
-					container.querySelector(`#${tab.dataset.pane}`).classList.add('active');
-				});
-			});
+			const _switchTab = (tabEl) => {
+				container.querySelectorAll('.appstore-tab').forEach(t => t.classList.remove('active'));
+				panes.forEach(p => p.classList.remove('active'));
+				tabEl.classList.add('active');
+				container.querySelector(`#${tabEl.dataset.pane}`).classList.add('active');
+			};
 
 			// --- 3. Core Rendering Functions ---
-
-			// Renders the list of installed apps
 			const _renderApps = () => {
 				const grid = container.querySelector('#browse-pane .app-grid');
 				grid.innerHTML = 'Loading applications...';
-				kernel.api.apps.call('listApps')
+				this.kernel.api.apps.call('listApps')
 					.then(apps => {
 						grid.innerHTML = '';
 						if (apps.length === 0) {
@@ -5894,9 +4777,8 @@ ob_end_flush();
 						apps.forEach(app => {
 							const card = document.createElement('div');
 							card.className = 'app-card';
-							// Use 'name' from the manifest for consistency
-							card.innerHTML = `<div class="icon">${app.icon || '📦'}</div><h4>${app.name || app.title}</h4><p>${app.description}</p>`;
-							card.onclick = () => kernel.launchApplication(app.id);
+							card.innerHTML = `<div class="icon">${app.icon || '📦'}</div><h4>${app.title}</h4><p>${app.description}</p>`;
+							card.onclick = () => this.kernel.launchApplication(app.id);
 							grid.appendChild(card);
 						});
 					})
@@ -5905,12 +4787,12 @@ ob_end_flush();
 					});
 			};
 
-			// Renders the list of pending submissions
 			const _renderSubmissions = () => {
 				const list = container.querySelector('#submissions-pane .submission-list');
 				list.innerHTML = 'Loading submissions...';
-				kernel.api.apps.call('listSubmissions')
+				this.kernel.api.apps.call('listSubmissions')
 					.then(submissions => {
+						submissionsCache = submissions;
 						list.innerHTML = '';
 						if (submissions.length === 0) {
 							list.innerHTML = '<p>No pending submissions.</p>';
@@ -5919,14 +4801,19 @@ ob_end_flush();
 						submissions.forEach(sub => {
 							const card = document.createElement('div');
 							card.className = 'submission-card';
+							card.dataset.id = sub.manifest.id;
 							card.innerHTML = `
-								<h4>${sub.manifest.name} <small>(v${sub.manifest.version})</small></h4>
+								<h4>${sub.manifest.title} <small>(v${sub.manifest.version})</small></h4>
 								<p><strong>ID:</strong> ${sub.manifest.id}</p>
-								<p>${sub.manifest.description}</p>
+								<p>${sub.manifest.description || 'No description provided.'}</p>
 								<p><small>Submitted by: ${sub.submitted_by} on ${new Date(sub.submitted_at).toLocaleString()}</small></p>
+								<div class="submission-details">
+									<button class="button" data-action="view-manifest">View Manifest</button>
+									<button class="button" data-action="view-code">View Code</button>
+								</div>
 								<div class="submission-actions">
-									<button class="approve-btn" data-id="${sub.manifest.id}">Approve</button>
-									<button class="reject-btn" data-id="${sub.manifest.id}">Reject</button>
+									<button class="approve-btn" data-action="approve">Approve</button>
+									<button class="reject-btn" data-action="reject">Reject</button>
 								</div>
 							`;
 							list.appendChild(card);
@@ -5937,54 +4824,87 @@ ob_end_flush();
 					});
 			};
 			
+			const showCodeDialog = (title, content) => {
+				const pre = document.createElement('pre');
+				pre.style.whiteSpace = 'pre-wrap';
+				pre.style.wordBreak = 'break-all';
+				pre.style.maxHeight = '400px';
+				pre.style.overflowY = 'auto';
+				pre.style.background = 'var(--terminal-bg)';
+				pre.style.padding = '10px';
+				pre.style.border = '1px solid var(--main-border)';
+				pre.style.borderRadius = '3px';
+				pre.textContent = content;
+
+				this.kernel.modules.ui.showDialog(title, pre.outerHTML, { buttons: ['Copy', 'Close'] })
+					.then(result => {
+						if (result.button === 'Copy') {
+							navigator.clipboard.writeText(content).then(() => {
+								this.kernel.modules.ui.showNotification('Success', 'Content copied to clipboard.');
+							}).catch(err => {
+								this.kernel.modules.ui.showNotification('Error', 'Failed to copy content.', 5000);
+							});
+						}
+					});
+			};
+
 			// --- 4. Admin-Specific UI and Event Handling ---
-			
-			// CORRECTED: Check kernel.modules.security instead of kernel.security
-			if (kernel.modules.security && typeof kernel.modules.security.isAdmin === 'function' && kernel.modules.security.isAdmin()) {
+			if (this.kernel.modules.security && this.kernel.modules.security.isAdmin()) {
 				const submissionsTab = document.createElement('div');
 				submissionsTab.className = 'appstore-tab';
 				submissionsTab.dataset.pane = 'submissions-pane';
 				submissionsTab.textContent = 'Submissions';
 				nav.appendChild(submissionsTab);
-				
-				// Re-query tabs to include the new one
-				const allTabs = container.querySelectorAll('.appstore-tab');
-				allTabs.forEach(tab => {
-					tab.addEventListener('click', () => {
-						allTabs.forEach(t => t.classList.remove('active'));
-						panes.forEach(p => p.classList.remove('active'));
-						tab.classList.add('active');
-						container.querySelector(`#${tab.dataset.pane}`).classList.add('active');
-						if (tab.dataset.pane === 'submissions-pane') {
-							_renderSubmissions(); // Load submissions when tab is clicked
-						}
-					});
-				});
+			}
 
-				// Add event listeners for approve/reject buttons
-				container.querySelector('#submissions-pane').addEventListener('click', e => {
-					const target = e.target;
-					const appId = target.dataset.id;
-					if (!appId) return;
-
-					if (target.classList.contains('approve-btn')) {
-						kernel.api.apps.call('approveSubmission', { id: appId })
-							.then(() => {
-								kernel.modules.ui.showNotification('Success', `App '${appId}' approved.`);
-								_renderSubmissions(); // Refresh list
-								_renderApps(); // Also refresh the main app list
-							})
-							.catch(err => kernel.modules.ui.showNotification('Error', err.message, 'error'));
-					} else if (target.classList.contains('reject-btn')) {
-						kernel.api.apps.call('rejectSubmission', { id: appId })
-							.then(() => {
-								kernel.modules.ui.showNotification('Success', `App '${appId}' rejected.`);
-								_renderSubmissions(); // Refresh list
-							})
-							.catch(err => kernel.modules.ui.showNotification('Error', err.message, 'error'));
+			container.querySelectorAll('.appstore-tab').forEach(tab => {
+				tab.addEventListener('click', () => {
+					_switchTab(tab);
+					if (tab.dataset.pane === 'submissions-pane') {
+						_renderSubmissions();
 					}
 				});
-			}
+			});
+
+			container.querySelector('#submissions-pane').addEventListener('click', e => {
+				const target = e.target;
+				const action = target.dataset.action;
+				const card = target.closest('.submission-card');
+				if (!action || !card) return;
+
+				const appId = card.dataset.id;
+				const submission = submissionsCache.find(s => s.manifest.id === appId);
+				if (!submission) {
+					this.kernel.modules.ui.showNotification('Error', 'Could not find submission data. Please refresh.', 5000);
+					return;
+				}
+
+				switch (action) {
+					case 'approve':
+						this.kernel.api.apps.call('approveSubmission', { id: appId })
+							.then(() => {
+								this.kernel.modules.ui.showNotification('Success', `App '${appId}' approved.`);
+								_renderSubmissions();
+								_renderApps();
+							})
+							.catch(err => this.kernel.modules.ui.showNotification('Error', err.message, 5000));
+						break;
+					case 'reject':
+						this.kernel.api.apps.call('rejectSubmission', { id: appId })
+							.then(() => {
+								this.kernel.modules.ui.showNotification('Success', `App '${appId}' rejected.`);
+								_renderSubmissions();
+							})
+							.catch(err => this.kernel.modules.ui.showNotification('Error', err.message, 5000));
+						break;
+					case 'view-manifest':
+						showCodeDialog('Manifest: ' + submission.manifest.title, JSON.stringify(submission.manifest, null, 2));
+						break;
+					case 'view-code':
+						showCodeDialog('Code: ' + submission.manifest.title, submission.code);
+						break;
+				}
+			});
 
 			// --- 5. Initial Load ---
 			_renderApps();
@@ -7354,8 +6274,140 @@ ob_end_flush();
 			}
 		}
 		
-	}
+		async _renderUserManagement(windowId) {
+			const container = document.getElementById('user-list');
+			try {
+				const users = await this.kernel.api.users.call('listUsers');
+				let userListHtml = '';
+				users.forEach(user => {
+					userListHtml += `
+						<div class="user-list-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--main-border);">
+							<div>
+								<strong>${user.name}</strong> (${user.username})<br>
+								<small>Roles: ${user.roles.join(', ')}</small>
+							</div>
+							<div>
+								<button class="button" data-action="edit" data-username="${user.username}">Edit</button>
+								${user.username !== 'admin' ? `<button class="button" data-action="delete" data-username="${user.username}">Delete</button>` : ''}
+							</div>
+						</div>
+					`;
+				});
+				container.innerHTML = userListHtml;
 
+				// Add event listeners for edit/delete buttons
+				container.querySelectorAll('button').forEach(btn => {
+					btn.onclick = async (e) => {
+						const action = e.target.dataset.action;
+						const username = e.target.dataset.username;
+
+						if (action === 'delete') {
+							this.kernel.modules.ui.showDialog('Confirm Deletion', `Are you sure you want to delete user '${username}'? This cannot be undone.`, { buttons: ['Cancel', 'Delete']})
+								.then(async (result) => {
+									if (result.button === 'Delete') {
+                                        try {
+										    await this.kernel.api.users.call('deleteUser', { username });
+                                            this.kernel.modules.ui.showNotification('Success', `User '${username}' has been deleted.`);
+										    this._renderUserManagement(windowId); // Refresh list
+                                        } catch (error) {
+                                            this.kernel.modules.ui.showNotification('Error', error.message, 5000);
+                                        }
+									}
+								});
+						}
+						
+						if (action === 'edit') {
+                            try {
+                                const user = await this.kernel.api.users.call('getUserDetails', { username });
+
+                                // ... code to build rolesCheckboxes and dialogBody remains the same ...
+                                const allRoles = ['user', 'developer', 'admin'];
+                                const rolesCheckboxes = allRoles.map(role => `
+                                    <label style="margin-right: 15px; display: inline-block;">
+                                        <input type="checkbox" name="roles" value="${role}" ${user.roles.includes(role) ? 'checked' : ''}>
+                                        ${role.charAt(0).toUpperCase() + role.slice(1)}
+                                    </label>
+                                `).join('');
+
+                                const dialogBody = `
+                                    <div class="form-group" style="margin-bottom: 15px;">
+                                        <label for="edit-name" style="display: block; margin-bottom: 5px;">Full Name</label>
+                                        <input type="text" id="edit-name" value="${user.name}" style="width: 100%; padding: 8px;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px;">Roles</label>
+                                        <div id="roles-container">${rolesCheckboxes}</div>
+                                    </div>
+                                    <hr style="margin: 20px 0; border-color: var(--main-border); opacity: 0.5;">
+                                    <button class="button" id="change-password-dialog-btn">Change Password</button>
+                                `;
+
+                                // This part remains the same
+                                this.kernel.modules.ui.showDialog(`Edit User: ${username}`, dialogBody, { 
+                                    buttons: ['Cancel', 'Save Changes'],
+                                    getFormData: () => {
+                                        const name = document.getElementById('edit-name')?.value;
+                                        const roles = Array.from(document.querySelectorAll('#roles-container input:checked')).map(cb => cb.value);
+                                        return { name, roles };
+                                    }
+                                }).then(async (result) => {
+                                    if (result.button === 'Save Changes' && result.formData) {
+                                        await this.kernel.api.users.call('updateUser', { 
+                                            username, 
+                                            name: result.formData.name, 
+                                            roles: result.formData.roles 
+                                        });
+                                        this.kernel.modules.ui.showNotification('Success', `User '${username}' updated.`);
+                                        this._renderUserManagement(windowId);
+                                    }
+                                });
+                                
+                                setTimeout(() => {
+                                    const changePasswordBtn = document.getElementById('change-password-dialog-btn');
+                                    if(changePasswordBtn) {
+                                        changePasswordBtn.onclick = async () => {
+
+                                            // ✅ FIXED: The showDialog call for the password now includes getFormData.
+                                            const passwordResult = await this.kernel.modules.ui.showDialog('Set New Password', `
+                                                <div class="form-group">
+                                                    <label for="new-password" style="display: block; margin-bottom: 5px;">New Password</label>
+                                                    <input type="password" id="new-password" style="width: 100%; padding: 8px;" autocomplete="new-password">
+                                                </div>
+                                            `, { 
+                                                buttons: ['Cancel', 'Set Password'],
+                                                getFormData: () => {
+                                                    const input = document.getElementById('new-password');
+                                                    return { password: input ? input.value : null };
+                                                }
+                                            });
+
+                                            // ✅ FIXED: The newPassword value is now safely retrieved from the dialog's result object.
+                                            if (passwordResult.button === 'Set Password' && passwordResult.formData) {
+                                                const newPassword = passwordResult.formData.password;
+                                                try {
+                                                    await this.kernel.api.users.call('setPassword', { username, newPassword });
+                                                    this.kernel.modules.ui.showNotification('Success', `Password for '${username}' has been changed.`);
+                                                } catch (error) {
+                                                    this.kernel.modules.ui.showNotification('Error', error.message, 5000);
+                                                }
+                                            }
+                                        };
+                                    }
+                                }, 100);
+
+                            } catch (error) {
+                                this.kernel.modules.ui.showNotification('Error', error.message, 5000);
+                            }
+						}
+					};
+				});
+			} catch (e) {
+				container.innerHTML = `<p style="color:red;">Error loading users: ${e.message}</p>`;
+			}
+		}
+		
+	}
+	
 	/**
 	 * UI Manager
 	 * Manages user interface components
@@ -7438,7 +6490,7 @@ ob_end_flush();
 				this.log.error('Failed to save UI preferences:', error);
 			}
 		}
-		
+				
 		/**
 		 * Apply theme
 		 * @param {string} theme - Theme name
@@ -7605,32 +6657,31 @@ ob_end_flush();
 		}
 		
 		/**
-		 * Show a dialog
+		 * Show a dialog, now with complete logic and form data handling.
 		 * @param {string} title - Dialog title
-		 * @param {string} message - Dialog message
+		 * @param {string} message - Dialog message (HTML content)
 		 * @param {Object} [options] - Dialog options
-		 * @returns {Promise<string>} Selected button
+		 * @returns {Promise<Object>} Resolves with an object containing the clicked button and any form data
 		 */
 		showDialog(title, message, options = {}) {
 			return new Promise(resolve => {
-				// Default options
+				// Default options from the original file, ensuring full compatibility
 				const defaultOptions = {
 					buttons: ['OK'],
 					defaultButton: 'OK',
-					cancelButton: null
+					cancelButton: null,
+                    getFormData: null // The new callback for capturing form data
 				};
 				
 				const dialogOptions = { ...defaultOptions, ...options };
 				
-				// Create backdrop
+				// Create backdrop and modal elements
 				const backdrop = document.createElement('div');
 				backdrop.className = 'modal-backdrop';
-				
-				// Create dialog
 				const dialog = document.createElement('div');
 				dialog.className = 'modal';
 				
-				// Build dialog content
+				// Build dialog content, including the button mapping from the original file
 				dialog.innerHTML = `
 					<div class="modal-header">
 						<div class="modal-title">${title}</div>
@@ -7639,15 +6690,14 @@ ob_end_flush();
 						${message}
 					</div>
 					<div class="modal-footer">
-						${dialogOptions.buttons.map(button => `
-							<button class="button ${button === dialogOptions.defaultButton ? 'button-primary' : ''}" data-button="${button}">
-								${button}
+						${dialogOptions.buttons.map(buttonText => `
+							<button class="button ${buttonText === dialogOptions.defaultButton ? 'button-primary' : ''}" data-button="${buttonText}">
+								${buttonText}
 							</button>
 						`).join('')}
 					</div>
 				`;
 				
-				// Add to DOM
 				backdrop.appendChild(dialog);
 				document.body.appendChild(backdrop);
 				
@@ -7656,49 +6706,86 @@ ob_end_flush();
 					backdrop.classList.add('show');
 				}, 10);
 				
+                // Function to close the dialog and resolve the promise
+                const closeDialog = (buttonName) => {
+                    let formData = null;
+                    // ✅ FIXED: Capture form data *before* the modal is removed from the DOM.
+                    if (typeof dialogOptions.getFormData === 'function') {
+                        formData = dialogOptions.getFormData();
+                    }
+
+                    backdrop.classList.remove('show');
+                    setTimeout(() => {
+                        if (backdrop.parentNode) {
+                            backdrop.remove();
+                        }
+                        // Resolve with the consistent object format
+                        resolve({ button: buttonName, formData: formData });
+                    }, 300);
+                };
+
 				// Set up button handlers
 				dialog.querySelectorAll('.button').forEach(button => {
 					button.addEventListener('click', () => {
-						const buttonName = button.getAttribute('data-button');
-						
-						// Hide dialog
-						backdrop.classList.remove('show');
-						
-						// Remove from DOM after animation
-						setTimeout(() => {
-							if (backdrop.parentNode) {
-								backdrop.remove();
-							}
-							
-							resolve(buttonName);
-						}, 300);
+                        const buttonName = button.getAttribute('data-button');
+						closeDialog(buttonName);
 					});
 				});
 				
-				// Handle Escape key
+				// Handle Escape key, preserving original functionality
 				if (dialogOptions.cancelButton) {
-					document.addEventListener('keydown', function escHandler(e) {
+					const escHandler = (e) => {
 						if (e.key === 'Escape') {
 							document.removeEventListener('keydown', escHandler);
-							
-							// Hide dialog
-							backdrop.classList.remove('show');
-							
-							// Remove from DOM after animation
-							setTimeout(() => {
-								if (backdrop.parentNode) {
-									backdrop.remove();
-								}
-								
-								resolve(dialogOptions.cancelButton);
-							}, 300);
+							closeDialog(dialogOptions.cancelButton);
 						}
-					});
+					};
+					document.addEventListener('keydown', escHandler);
 				}
 			});
 		}
-	}
+		
+		/**
+		 * Displays the developer registration modal dialog.
+		 * This method builds the registration form, handles submission,
+		 * calls the authentication API, and provides user feedback.
+		 */
+		showRegistrationDialog() {
+			const body = `
+				<div class="form-group"><label for="reg-username">Username</label><input type="text" id="reg-username" required></div>
+				<div class="form-group"><label for="reg-name">Full Name</label><input type="text" id="reg-name" required></div>
+				<div class="form-group"><label for="reg-password">Password (min. 8 characters)</label><input type="password" id="reg-password" required></div>
+				<div id="reg-error" class="login-error"></div>`;
 
+			// This function is passed to showDialog and runs *before* the modal closes,
+			// safely capturing the form data.
+			const getFormData = () => {
+				return {
+					username: document.getElementById('reg-username').value,
+					name: document.getElementById('reg-name').value,
+					password: document.getElementById('reg-password').value
+				};
+			};
+			
+			this.showDialog('Developer Registration', body, { buttons: ['Cancel', 'Register'], getFormData: getFormData })
+				.then(async (result) => {
+					// Check which button was clicked and if we have form data.
+					if (result.button === 'Register' && result.formData) {
+						try {
+							const apiResult = await this.kernel.api.auth.call('register', result.formData);
+							this.showNotification('Success', apiResult.message);
+						} catch (error) {
+							// ✅ FIXED: Simply show the server's validation error in a notification.
+							// This is a cleaner and more reliable way to give user feedback.
+							this.showNotification('Registration Failed', error.message, 5000);
+						}
+					}
+				});
+		}
+
+		
+	}
+	
 	// Initialize Genesis OS
 	document.addEventListener('DOMContentLoaded', async () => {
 		const debugEl = document.getElementById('debug-console');
