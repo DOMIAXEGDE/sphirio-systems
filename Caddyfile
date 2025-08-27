@@ -1,0 +1,39 @@
+﻿dev.local {
+    encode zstd gzip
+    root * D:/domalecs-os/clix5/OSbench
+
+    # Serve only non-PHP files directly
+    @static {
+        file
+        not path *.php
+    }
+    handle @static {
+        file_server
+    }
+
+    # Existing .php files -> proxy to the PHP builtin server
+    @php_exists {
+        path *.php
+        file
+    }
+    handle @php_exists {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    # Everything else (virtual routes) -> /index.php then proxy
+    @not_static {
+        not file
+    }
+    handle @not_static {
+        rewrite * /index.php
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Cross-Origin-Opener-Policy same-origin
+        Cross-Origin-Embedder-Policy require-corp
+    }
+
+    tls internal
+}
