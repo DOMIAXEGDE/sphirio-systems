@@ -1,8 +1,8 @@
 ﻿dev.local {
+    tls internal
     encode zstd gzip
     root * D:/domalecs-os/clix5/OSbench
 
-    # Serve only non-PHP files directly
     @static {
         file
         not path *.php
@@ -11,7 +11,6 @@
         file_server
     }
 
-    # Existing .php files -> proxy to the PHP builtin server
     @php_exists {
         path *.php
         file
@@ -20,7 +19,6 @@
         reverse_proxy 127.0.0.1:8000
     }
 
-    # Everything else (virtual routes) -> /index.php then proxy
     @not_static {
         not file
     }
@@ -34,6 +32,4 @@
         Cross-Origin-Opener-Policy same-origin
         Cross-Origin-Embedder-Policy require-corp
     }
-
-    tls internal
 }
